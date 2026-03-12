@@ -4,9 +4,10 @@
 CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     user_name VARCHAR(50) NOT NULL,
-    webhook TEXT NOT NULL,
-    types INTEGER NOT NULL,
+    webhook TEXT DEFAULT '',
+    types INTEGER DEFAULT 0,
     is_active BOOLEAN DEFAULT TRUE,
+    market_type INTEGER DEFAULT 0,
     recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -40,8 +41,8 @@ INSERT INTO configs (cur_user_id) VALUES (0);
 
 INSERT INTO db_ver (ver) VALUES (1);
 
-INSERT INTO users (id, user_name, webhook, types)
-VALUES (0, '', '', 0)
+INSERT INTO users (id, user_name, webhook, types, market_type)
+VALUES (0, '', '', 0,0)
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO tickers (user_id,ticker_code,ticker_name,target_price) VALUES

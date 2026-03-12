@@ -65,6 +65,20 @@ def setup_database():
     except Exception as e:
         print(f"❌ 오류 발생: {e}")
 
+def get_user_market_type():
+    conn = get_connection(target_db)
+
+    try:
+        # 1. 커서를 생성해야 execute를 사용할 수 있습니다.
+        with conn.cursor() as cur:
+            # 2. tickers가 아닌 users 테이블에서 첫 번째 사용자를 찾는 것이 더 정확합니다.
+            cur.execute("SELECT market_type FROM users")
+            result = cur.fetchone()
+            return result[0]
+    except Exception as e:
+        print(f"❌ 사용자 ID 조회 실패: {e}")
+        return 0
+
 def get_user_webhook():
     conn = get_connection(target_db)
 
@@ -74,14 +88,12 @@ def get_user_webhook():
             # 2. tickers가 아닌 users 테이블에서 첫 번째 사용자를 찾는 것이 더 정확합니다.
             cur.execute("SELECT * FROM users")
             result = cur.fetchone()
-
-            new_dict = {result[0]: [result[1], result[2], result[3], result[4]]}
-            config.set_webhook(new_dict)
+            config.set_webhook(result)
             # 결과가 있으면 id 반환, 없으면 0 반환
     except Exception as e:
         print(f"❌ 사용자 ID 조회 실패: {e}")
 
-def update_user_webhook(user_id, name, webhook, types, is_active):
+def update_user_webhook(user_id, name, webhook, types, is_active, market_type):
     conn = get_connection(target_db)
 
     try:
@@ -89,9 +101,27 @@ def update_user_webhook(user_id, name, webhook, types, is_active):
         with conn:  # with conn을 써야 자동으로 commit이 됩니다.
             with conn.cursor() as cur:
                 # 2. tickers가 아닌 users 테이블에서 첫 번째 사용자를 찾는 것이 더 정확합니다.
-                cur.execute("UPDATE users SET user_name = %s, webhook = %s, types = %s, is_active = %s WHERE id = %s",(name, webhook, types, is_active, user_id))
-                new_dict = {user_id: [name, webhook, types, is_active]}
+                cur.execute("UPDATE users SET user_name = %s, webhook = %s, types = %s, is_active = %s, market_tpye = %s WHERE id = %s",(name, webhook, types, is_active, user_id,market_type))
+                new_dict = [user_id, name, webhook, types, is_active, market_type]
                 config.set_webhook(new_dict)
+                return True
+            # 결과가 있으면 id 반환, 없으면 0 반환
+    except Exception as e:
+        print(f"❌ 사용자 ID 조회 실패: {e}")
+        return False
+
+def update_user_webhook(user_id, market_type):
+    conn = get_connection(target_db)
+
+    try:
+        # 1. 커서를 생성해야 execute를 사용할 수 있습니다.
+        with conn:  # with conn을 써야 자동으로 commit이 됩니다.
+            with conn.cursor() as cur:
+                # 2. tickers가 아닌 users 테이블에서 첫 번째 사용자를 찾는 것이 더 정확합니다.
+                cur.execute("UPDATE users SET market_tpye = %s WHERE id = %s",(market_type ,user_id))
+                get_dict = config.get_webhook()
+                get_dict[5] = market_type
+                config.set_webhook(get_dict)
                 return True
             # 결과가 있으면 id 반환, 없으면 0 반환
     except Exception as e:
@@ -206,18 +236,13 @@ def delete_ticker_to_db(db_id):
     conn = get_connection(target_db)
 
     try:
-        # 1. 데이터 삽입 및 트랜잭션 완료
-        with conn:  # with conn을 써야 자동으로 commit이 됩니다.
+        with conn:
             with conn.cursor() as cur:
-                cur.execute("""
-                    DELETE FROM tickers 
-                    WHERE id = %s
-                """, db_id)
+                # 튜플 형태로 전달: (db_id, ) <- 뒤에 쉼표가 핵심입니다!
+                sql = "DELETE FROM tickers WHERE id = %s"
+                cur.execute(sql, (db_id,))
 
-        print(f"✅ 종목 삭제 완료: {db_id}")
-
-        # 2. 최신 리스트를 다시 조회해서 반환 (refresh용)
-        # 기존에 만든 get_user_ticker_list 함수를 재사용하는 것이 효율적입니다.
+        print(f"✅ 종목 삭제 완료: ID {db_id}")
         return True
 
     except Exception as e:

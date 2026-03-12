@@ -83,6 +83,9 @@ def open_user_mgmt_logic(app):
     # [+] 추가 창 로직
     def add_item_window(item_values=None,db_id=None):
         is_edit_mode = item_values is not None
+        default_code = ""
+        default_name = ""
+        default_price = ""
 
         add_win = tk.Toplevel(manager_ui)
         add_win.title("새 종목 추가")
@@ -90,10 +93,7 @@ def open_user_mgmt_logic(app):
 
         # 1. 라디오 버튼용 변수 (기본값: .KS)
         market_var = tk.StringVar(value=".KS")
-
-        default_code = ""
-        default_name = ""
-        default_price = ""
+        price_var = tk.StringVar(value=default_price)
 
         # 2. 수정 모드일 경우 기존 데이터 파싱
         if is_edit_mode:
@@ -127,9 +127,21 @@ def open_user_mgmt_logic(app):
         ent_name.insert(0,default_name)
         ent_name.pack()
 
-        tk.Label(add_win, text="목표가:").pack(pady=5)
-        ent_price = tk.Entry(add_win)
-        ent_price.insert(0,default_price)
+        # 실시간으로 표시될 라벨
+        label_display = tk.Label(add_win, text="목표가:0원", fg="blue")
+        label_display.pack(pady=5)
+
+        # 2. 변수가 변할 때 실행될 함수
+        def update_display(*args):
+            val = price_var.get().replace(',', '')
+            if val.isdigit():
+                label_display.config(text=f"목표가:{int(val):,}원")
+            else:
+                label_display.config(text="목표가:0원")
+
+        # 3. Entry 생성 시 textvariable 연결
+        ent_price = tk.Entry(add_win, textvariable=price_var)
+        price_var.trace_add("write", update_display)  # 값 변화 감지 시작!
         ent_price.pack()
 
 

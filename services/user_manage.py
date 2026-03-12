@@ -10,11 +10,11 @@ def open_user_discord(app, item_values):
     add_win.geometry("500x350")
 
     # 1. 라디오 버튼용 변수 (기본값: .KS)
-    market_var = tk.StringVar(value=str(data_list[2]))
-    active_var = tk.BooleanVar(value=data_list[3])
+    market_var = tk.IntVar(value=data_list['types'])
+    active_var = tk.BooleanVar(value=data_list['is_active'])
 
-    default_name = data_list[0]
-    default_webhook = data_list[1]
+    default_name = data_list['name']
+    default_webhook = data_list['webhook']
 
     # 시장 선택 레이블 및 버튼
     radio_frame = tk.Frame(add_win)
@@ -42,13 +42,13 @@ def open_user_discord(app, item_values):
         webhook = ent_webhook.get().strip()
         types = market_var.get()
         is_active = active_var.get()  # True 또는 False 반환
+        market_type = item_values[5]
 
         if name and webhook:
-            db.update_user_webhook(0, name, webhook, types, is_active)
+            db.update_user_webhook(item_values[0], name, webhook, types, is_active, market_type)
             add_win.destroy()
         else:
             show_message_box("경고", "모든 정보를 입력해주세요.", type=1)
-
 
     def show_message_box(title, message, type=0):
         if type == 0:
@@ -59,4 +59,3 @@ def open_user_discord(app, item_values):
             return messagebox.askyesno(title, message, parent=add_win)
 
     tk.Button(add_win, text="저장", command=save_new_ticker, width=15, bg="#e1f5fe").pack(pady=25)
-

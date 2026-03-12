@@ -3,10 +3,12 @@ from tkinter import ttk
 import threading  # 추가 누락됨
 import yfinance as yf
 import config
-from datetime import datetime
+from datetime import datetime,timedelta
 import pytz # 시간대 설정을 위해 설치 필요 (pip install pytz)
 from services.tickers_manage import open_user_mgmt_logic
 from services.user_manage import open_user_discord
+import FinanceDataReader as fdr
+import database.connection as db
 
 # --- [GUI 클래스] ---
 class StockApp:
@@ -14,6 +16,7 @@ class StockApp:
         self.root = root
         self.root.title("주가 모니터 & 알리미")
         self.root.geometry("700x550")  # 버튼 공간을 위해 높이 약간 조절
+
 
         self.timer_id = None
         self.ui_update_id = None
@@ -49,6 +52,15 @@ class StockApp:
         self.user_btn = tk.Button(self.button_frame, text="👤 사용자 관리", command=self.open_user_manage, width=12)
         self.user_btn.pack(side="left", padx=5)
 
+        # 시장 선택 레이블 및 버튼
+        radio_frame = tk.Frame(root)
+        radio_frame.pack()
+        self.cur_market = tk.IntVar(value=db.get_user_market_type())
+
+        tk.Radiobutton(radio_frame, text="Naver", variable=self.cur_market, value=0).pack(side="left", padx=10)
+        tk.Radiobutton(radio_frame, text="KRX", variable=self.cur_market, value=1).pack(side="left", padx=10)
+        tk.Radiobutton(radio_frame, text="YAHOO", variable=self.cur_market, value=2).pack(side="left", padx=10)
+
         # --- 표(Treeview) 설정 ---
         self.tree = ttk.Treeview(root, columns=("name", "open", "current", "target"), show="headings", height=12)
         self.tree.heading("name", text="종목명")
@@ -66,7 +78,7 @@ class StockApp:
         self.root.bind("<Escape>", self.on_esc)
 
         # 데이터 수집 쓰레드 실행
-        threading.Thread(target=self.data_fetch_loop, daemon=True).start()
+        threading.Thread(target=self.data_market, daemon=True).start()
         self.get_time()
         # UI 갱신 루프 시작
         self.update_ui_loop()
@@ -91,7 +103,7 @@ class StockApp:
 
         return formatted_time
 
-    def data_fetch_loop_cur(self):
+    def market_yahoo_one(self):
         for info in self.watchlist.values():
             code, name, target = info
             try:
@@ -109,32 +121,6 @@ class StockApp:
                         self.stock_info[code]['open'] = hist['Open'].iloc[0]
             except Exception as e:
                 print(f"📡 데이터 수집 오류 ({code}): {e}")
-
-    def data_fetch_loop(self):
-        """네트워크 통신 전담 쓰레드"""
-        while True:
-            for info in self.watchlist.values():
-                code, name, target = info
-                try:
-                    stock = yf.Ticker(code)
-                    # 1. 현재가는 계속 업데이트
-                    self.stock_info[code]['price'] = stock.fast_info.last_price
-
-                    # 2. 시작가는 0일 때만 (최초 1회) 가져오기
-                    if self.stock_info[code]['open'] == 0:
-                        # history 사용이 더 정확함
-                        # 오늘 날짜를 YYYY-MM-DD 형식으로 가져옵니다.
-                        today = datetime.now().strftime('%Y-%m-%d')
-                        hist = stock.history(start=today)
-                        if not hist.empty:
-                            self.stock_info[code]['open'] = hist['Open'].iloc[0]
-                except Exception as e:
-                    print(f"📡 데이터 수집 오류 ({code}): {e}")
-
-            # 대기 상태 (이벤트 발생 시 즉시 깨어남)
-            is_interrupted = self.interrupt_event.wait(timeout=self.update_interval)
-            if is_interrupted:
-                self.interrupt_event.clear()
 
 
     def update_ui_loop(self):
@@ -207,20 +193,80 @@ class StockApp:
         open_user_mgmt_logic(self)
 
     def on_select(self,event):
+        self.interrupt_event.set()
         selected = self.tree.selection()
         if selected:
             item = self.tree.item(selected[0])
-            name = item['values'][1]
+            name = item['values'][0]
             for info in self.watchlist.values():
                 if info[1] == name:
                     self.selected_ticker = info[0]
                     break
             self.update_interval = config.ONE
             self.mode_label.config(text=f"🔥 집중 모드: {name} ({config.ONE}초 주기)", fg="purple")
-            # self.manual_refresh()
 
     def on_esc(self,event):
         self.update_interval = config.TEN
         self.selected_ticker = None
         self.mode_label.config(text=f"현재 모드: 일반 ({config.TEN}초 주기)", fg="blue")
         self.manual_refresh()
+
+    def data_market(self):
+        selected = self.cur_market.get()
+        while selected == 0:
+            try:
+                # 1. PyKRX 사용 (KRX 공식 데이터 기반)
+                # get_market_ohlcv_by_date는 시작일과 종료일 사이의 데이터를 가져옵니다.
+                for info in self.watchlist.values():
+                    code, name, target = info
+                    # FinanceDataReader 사용 (네이버/다음 금융 기반)
+                    # KRX 종목은 '005930' 형태로 입력하면 됩니다.
+                    self.get_current_price_fdr(code)
+
+            except Exception as e:
+                print(f"오류 발생: {e}")
+            self.update_ui_loop()
+            # 대기 상태 (이벤트 발생 시 즉시 깨어남)
+            is_interrupted = self.interrupt_event.wait(timeout=self.update_interval)
+            if is_interrupted:
+                self.interrupt_event.clear()
+
+    def get_current_price_fdr(self, code):
+        default_code, suffix = code.split('.')
+
+        selected = self.cur_market.get()
+
+        # 오늘과 7일 전 날짜 설정
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=7)
+
+        # 형식 변환
+        start_str = start_date.strftime('%Y-%m-%d')
+        end_str = end_date.strftime('%Y-%m-%d')
+
+        # 넉넉한 기간으로 조회
+        # 라디오 버튼 값에 따라 소스 접두어 설정
+        ticker = code.split('.')
+        print(ticker)
+        if selected == 0:  # Naver
+            symbol = f"NAVER:{ticker[0]}"
+        elif selected == 1:  # KRX
+            symbol = ticker[0]
+        elif selected == 2:  # Yahoo
+            symbol = f"YAHOO:{default_code}.{suffix}"  # 야후는 .KS 접미사 필요
+        else:
+            symbol = code
+        try:
+            df = fdr.DataReader(symbol, start=start_str, end=end_str)
+
+            self.stock_info[code]['price'] =df['Close'].iloc[-1]
+
+            # 2. 시작가는 0일 때만 (최초 1회) 가져오기
+            if self.stock_info[code]['open'] == 0:
+                price_pykrx = df['Open'].iloc[-1]
+                self.stock_info[code]['open'] = price_pykrx
+            print('-'*30)
+            print(f"{symbol}:{code},실시간 가격:{self.stock_info[code]['price']}")
+        except Exception as e:
+            print(f"📡 fdr 데이터 로드 오류 ({symbol}): {e}")
+        return 0

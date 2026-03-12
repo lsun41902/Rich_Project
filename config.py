@@ -1,6 +1,14 @@
 # --- 설정 ---
 WEBHOOK_URLS = ['',]
-MY_INFO = {0:['','',0,True]}
+MY_INFO = {
+    0: {
+        'name': '',
+        'webhook': '',
+        'types': 0,
+        'is_active': True,
+        'market_type': 0
+    }
+}
 
 # 감시 종목 및 목표가 (티커: [이름, 목표가격])
 WATCHLIST = {
@@ -20,9 +28,22 @@ def set_watch_list(watch_list):
     global WATCHLIST  # 함수 밖의 WATCHLIST를 사용하겠다고 명시
     WATCHLIST = watch_list
 
-def set_webhook(webhook):
+def set_webhook(result):
+    new_dict = {
+        result[0]: {
+            "name": result[1],
+            "webhook": result[2],
+            "types": result[3],
+            "is_active": result[4],
+            "market_type": result[5]
+        }
+    }
     global MY_INFO
-    MY_INFO =  webhook
+    MY_INFO =  new_dict
+
+def get_webhook():
+    global MY_INFO
+    return MY_INFO
 
 def set_cur_user(user_id):
     global CUR_USER_ID
