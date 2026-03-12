@@ -7,6 +7,7 @@ from datetime import datetime,timedelta
 import pytz # 시간대 설정을 위해 설치 필요 (pip install pytz)
 from services.tickers_manage import open_user_mgmt_logic
 from services.user_manage import open_user_discord
+from services.ticker_detail import show_chart
 import FinanceDataReader as fdr
 import database.connection as db
 
@@ -75,6 +76,7 @@ class StockApp:
         # --- 이벤트 및 쓰레드 ---
         self.interrupt_event = threading.Event()
         self.tree.bind("<<TreeviewSelect>>", self.on_select)
+        self.tree.bind("<Double-Button-1>", self.on_detail)
         self.root.bind("<Escape>", self.on_esc)
 
         # 데이터 수집 쓰레드 실행
@@ -82,6 +84,29 @@ class StockApp:
         self.get_time()
         # UI 갱신 루프 시작
         self.update_ui_loop()
+
+    def on_detail(self, event):
+        # 1. 트리뷰에서 선택된 아이템의 ID 가져오기
+        selected_item = self.tree.focus()
+        if not selected_item:
+            return
+
+        # 2. 인덱스 번호 추출
+        idx = self.tree.index(selected_item)
+
+        # 3. 데이터 추출 (두 가지 방법 중 선택)
+        # 방법 A: 리스트로 변환하여 인덱싱 (추천)
+        watchlist_list = list(self.watchlist.values())
+        ticker_info = watchlist_list[idx]  # [종목코드, 종목명] 등의 튜플/리스트 반환
+
+        # 방법 B: 트리뷰에 이미 출력된 값에서 직접 가져오기 (가장 확실함)
+        item_data = self.tree.item(selected_item)
+        ticker_name = item_data['values'][0]  # 트리뷰 첫 번째 컬럼값
+
+        print(f"인덱스 {idx} - 상세 그래프 종목: {ticker_name}")
+
+        # 4. 차트 호출 (item_data를 통째로 넘기거나 종목명만 넘김)
+        show_chart(self,ticker_info)
 
     def open_user_manage(self):
         open_user_discord(self, config.MY_INFO)
