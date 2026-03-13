@@ -68,7 +68,7 @@ def alert_worker(send_message_func):
             time.sleep(30)  # 중복 발송 방지
 
         # 장 마감 보고 (15:15)
-        elif now.hour == 15 and now.minute == 15 and 0 <= now.second < 25:
+        elif now.hour == 15 and now.minute == 20 and 0 <= now.second < 25:
             send_stock_report("오후 장 마감 보고", config.WATCHLIST, send_message_func)
             time.sleep(30)
 

@@ -9,7 +9,7 @@ from services.tickers_manage import open_user_mgmt_logic
 from services.user_manage import open_user_discord
 from services.ticker_detail import show_chart
 import FinanceDataReader as fdr
-import database.connection as db
+import database.connection_SQL as db
 
 # --- [GUI 클래스] ---
 class StockApp:
@@ -149,7 +149,8 @@ class StockApp:
 
 
     def update_ui_loop(self):
-        #만약 이미 예약된 작업이 있다면 취소 (중복 실행 방지)
+        now = datetime.now()
+        # 만약 이미 예약된 작업이 있다면 취소 (중복 실행 방지)
         if self.ui_update_id is not None:
             self.root.after_cancel(self.ui_update_id)
 
@@ -163,11 +164,14 @@ class StockApp:
             open_p = self.stock_info[code]['open']
             unit = "원" if ".KS" in code or ".KQ" in code else "$"
 
-            # 가격 변동에 따른 색상 태그 설정
-            if price > open_p and open_p != 0:
-                tag, display = 'up', f"▲ {int(float(price)):,}"
-            elif price < open_p and open_p != 0:
-                tag, display = 'down', f"▼ {int(float(price)):,}"
+            if (now.hour == 9 and now.minute >= 0) or (9 < now.hour < 15) or (now.hour == 15 and now.minute <= 20):
+                # 가격 변동에 따른 색상 태그 설정
+                if price > open_p and open_p != 0:
+                    tag, display = 'up', f"▲ {int(float(price)):,}"
+                elif price < open_p and open_p != 0:
+                    tag, display = 'down', f"▼ {int(float(price)):,}"
+                else:
+                    tag, display = 'none', f"  {int(float(price)):,}"
             else:
                 tag, display = 'none', f"  {int(float(price)):,}"
 
@@ -175,8 +179,9 @@ class StockApp:
             if code == self.selected_ticker:
                 applied_tags.append('selected')
 
-            self.tree.insert("", tk.END,
-                             values=(name, f"{int(float(open_p)):,}{unit}", f"{display}{unit}", f"{int(float(target)):,}{unit}"),
+            self.tree.insert("", "end",
+                             values=(name, f"{int(float(open_p)):,}{unit}", f"{display}{unit}",
+                                     f"{int(float(target)):,}{unit}"),
                              tags=tuple(applied_tags))
 
         self.tree.tag_configure('up', foreground='red')
@@ -185,6 +190,9 @@ class StockApp:
 
         # 다음 갱신 예약
         self.ui_update_id = self.root.after(1000 if self.update_interval <= 1 else 5000, self.update_ui_loop)
+
+
+
 
     def stop_ui_update(self):
         # 외부에서 종료하고 싶을 때

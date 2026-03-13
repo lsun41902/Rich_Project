@@ -1,5 +1,4 @@
 import psycopg2
-from psycopg2 import sql
 import os
 
 import config
@@ -101,7 +100,7 @@ def update_user_webhook(user_id, name, webhook, types, is_active, market_type):
         with conn:  # with conn을 써야 자동으로 commit이 됩니다.
             with conn.cursor() as cur:
                 # 2. tickers가 아닌 users 테이블에서 첫 번째 사용자를 찾는 것이 더 정확합니다.
-                cur.execute("UPDATE users SET user_name = %s, webhook = %s, types = %s, is_active = %s, market_tpye = %s WHERE id = %s",(name, webhook, types, is_active, user_id,market_type))
+                cur.execute("UPDATE users SET user_name = %s, webhook = %s, types = %s, is_active = %s, market_type = %s WHERE id = %s",(name, webhook, types, is_active,market_type, user_id))
                 new_dict = [user_id, name, webhook, types, is_active, market_type]
                 config.set_webhook(new_dict)
                 return True
@@ -110,7 +109,7 @@ def update_user_webhook(user_id, name, webhook, types, is_active, market_type):
         print(f"❌ 사용자 ID 조회 실패: {e}")
         return False
 
-def update_user_webhook(user_id, market_type):
+def update_user_market_type(user_id, market_type):
     conn = get_connection(target_db)
 
     try:
@@ -118,7 +117,7 @@ def update_user_webhook(user_id, market_type):
         with conn:  # with conn을 써야 자동으로 commit이 됩니다.
             with conn.cursor() as cur:
                 # 2. tickers가 아닌 users 테이블에서 첫 번째 사용자를 찾는 것이 더 정확합니다.
-                cur.execute("UPDATE users SET market_tpye = %s WHERE id = %s",(market_type ,user_id))
+                cur.execute("UPDATE users SET market_type = %s WHERE id = %s",(market_type ,user_id))
                 get_dict = config.get_webhook()
                 get_dict[5] = market_type
                 config.set_webhook(get_dict)

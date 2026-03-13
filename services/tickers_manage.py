@@ -1,6 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
-import database.connection as db
+import database.connection_SQL as db
 import config
 
 def open_user_mgmt_logic(app):
@@ -50,8 +50,6 @@ def open_user_mgmt_logic(app):
         add_item_window(item_values, db_id=db_id)
 
 
-
-
     # --- 3. 데이터 로드 함수 (하나로 통합) ---
     def refresh_tree():
         for item in tree.get_children():
@@ -93,7 +91,6 @@ def open_user_mgmt_logic(app):
 
         # 1. 라디오 버튼용 변수 (기본값: .KS)
         market_var = tk.StringVar(value=".KS")
-        price_var = tk.StringVar(value=default_price)
 
         # 2. 수정 모드일 경우 기존 데이터 파싱
         if is_edit_mode:
@@ -107,6 +104,7 @@ def open_user_mgmt_logic(app):
                 market_var.set("." + suffix)
             else:
                 default_code = full_code
+        price_var = tk.StringVar(value=default_price)
 
         # 시장 선택 레이블 및 버튼
         tk.Label(add_win, text="시장 선택:", font=("Malgun Gothic", 9, "bold")).pack(pady=5)
@@ -128,22 +126,22 @@ def open_user_mgmt_logic(app):
         ent_name.pack()
 
         # 실시간으로 표시될 라벨
-        label_display = tk.Label(add_win, text="목표가:0원", fg="blue")
+        label_display = tk.Label(add_win, text="목표가: 0원", fg="blue")
         label_display.pack(pady=5)
 
         # 2. 변수가 변할 때 실행될 함수
         def update_display(*args):
             val = price_var.get().replace(',', '')
             if val.isdigit():
-                label_display.config(text=f"목표가:{int(val):,}원")
+                label_display.config(text=f"목표가: {int(val):,}원")
             else:
-                label_display.config(text="목표가:0원")
+                label_display.config(text="목표가: 0원")
 
         # 3. Entry 생성 시 textvariable 연결
         ent_price = tk.Entry(add_win, textvariable=price_var)
         price_var.trace_add("write", update_display)  # 값 변화 감지 시작!
         ent_price.pack()
-
+        update_display()
 
         # 3. 저장 로직 수정
         def save_new_ticker():

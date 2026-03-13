@@ -3,7 +3,7 @@ import tkinter as tk
 import requests
 import config  # config.py 불러오기
 
-from database.connection import setup_database
+from database.connection_SQL import setup_database
 from ui.gui import StockApp
 from services.alert import alert_worker
 

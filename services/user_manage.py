@@ -1,6 +1,6 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
-import database.connection as db
+from tkinter import messagebox
+import database.connection_SQL as db
 
 
 def open_user_discord(app, item_values):
@@ -42,10 +42,10 @@ def open_user_discord(app, item_values):
         webhook = ent_webhook.get().strip()
         types = market_var.get()
         is_active = active_var.get()  # True 또는 False 반환
-        market_type = item_values[5]
+        market_type = data_list['market_type']
 
         if name and webhook:
-            db.update_user_webhook(item_values[0], name, webhook, types, is_active, market_type)
+            db.update_user_webhook(0, name, webhook, types, is_active, market_type)
             add_win.destroy()
         else:
             show_message_box("경고", "모든 정보를 입력해주세요.", type=1)
