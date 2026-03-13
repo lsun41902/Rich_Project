@@ -5,9 +5,10 @@ import yfinance as yf
 import config
 from datetime import datetime,timedelta
 import pytz # 시간대 설정을 위해 설치 필요 (pip install pytz)
-from services.tickers_manage import open_user_mgmt_logic
+from services.tickers_manage_list import TickersManageList
 from services.user_manage import open_user_discord
 from services.ticker_detail import show_chart
+from services.ui_helper import center_window
 import FinanceDataReader as fdr
 import database.connection_SQL as db
 
@@ -16,7 +17,7 @@ class StockApp:
     def __init__(self, root, watchlist):  # main에서 watchlist를 받아옴
         self.root = root
         self.root.title("주가 모니터 & 알리미")
-        self.root.geometry("700x550")  # 버튼 공간을 위해 높이 약간 조절
+        center_window(self.root, 700, 550, None)
 
 
         self.timer_id = None
@@ -223,7 +224,7 @@ class StockApp:
         self.update_ui_loop()
 
     def open_user_mgmt(self):  # 이름을 살짝 바꿔주면 더 명확합니다.
-        open_user_mgmt_logic(self)
+        TickersManageList(self)
 
     def on_select(self,event):
         self.interrupt_event.set()

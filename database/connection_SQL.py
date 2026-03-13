@@ -3,6 +3,81 @@ import sqlite3
 import config
 import sys
 import shutil
+import pandas as pd
+
+DB_NAME = "rich_db.sqlite"
+CSV_PATH = "data/data_0322_20260313.csv" # 배포 시 resource_path로 감싸야 함
+
+
+def check_and_update_db():
+    conn = get_connection()
+
+    # 1. DB의 최신 데이터 날짜 확인
+    last_date = pd.read_sql("SELECT MAX(listing_date) FROM default_tickers", conn).iloc[0, 0]
+
+    # 2. 오늘 날짜와 비교 (예: 오늘이 2026-03-13이면 업데이트 체크)
+    # 업데이트가 필요하다고 판단되면:
+    if need_update(last_date):
+        print("최신 데이터를 확인합니다...")
+
+        # 3. 직접 다운로드 시도 (FinanceDataReader 대신 직접 요청)
+        url = "http://data.krx.co.kr/comm/bldAtt/getJsonDownload.cmd"
+        # ... 여기에 KRX에서 제공하는 다운로드 파라미터를 설정하여 요청 ...
+        # requests.post(url, data=params)
+
+        # 4. 새 데이터가 들어오면 기존 테이블 갱신 (REPLACE 활용)
+        # df.to_sql('default_tickers', conn, if_exists='replace', index=False)
+        print("데이터 업데이트 완료!")
+
+    conn.close()
+
+def init_db_from_csv():
+    try:
+        with get_connection() as conn:
+            with conn:
+                cursor = conn.cursor()
+                # 2. 데이터 유무 확인
+                cursor.execute("SELECT count(*) FROM default_tickers")
+                if cursor.fetchone()[0] == 0:
+                    print("데이터베이스가 비어 있습니다. CSV에서 데이터를 로드합니다...")
+
+                    # 3. CSV 읽기 (실행 파일 경로 대응)
+                    # 배포 시에는 resource_path() 함수를 사용하여 경로를 가져오세요
+                    target_csv = resource_path(CSV_PATH)
+                    if os.path.exists(target_csv):
+                        df = pd.read_csv(target_csv,encoding='cp949')
+                        file_name = os.path.basename(target_csv)
+                        rename_map = {
+                            '표준코드': 'std_code',
+                            '단축코드': 'short_code',
+                            '한글 종목명': 'name_ko',
+                            '한글 종목약명': 'short_name_ko',
+                            '영문 종목명': 'name_en',
+                            '상장일': 'listing_date',
+                            '시장구분': 'market_type',
+                            '증권구분': 'security_type',
+                            '소속부': 'dept_type',
+                            '주식종류': 'stock_type',
+                            '액면가': 'face_value',
+                            '상장주식수': 'total_shares'
+                        }
+                        df = df.rename(columns=rename_map)
+                        cols_to_use = list(rename_map.values())
+                        df = df[cols_to_use]
+
+                        df.to_sql('default_tickers', conn, if_exists='append', index=False)
+                        sql = """INSERT OR REPLACE INTO ticker_ver (ver) VALUES (?)"""
+                        cursor.execute(sql, (file_name,))
+                        return True
+                        print("데이터 로드 완료!")
+                    else:
+                        print(f"경로에 CSV 파일이 없습니다: {target_csv}")
+                        return False
+                else:
+                    return True
+    except Exception as e:
+        print_error(f"주식목록 가져오기 에러:{e}")
+        return False
 
 def get_connection():
     # 1. 유저의 로컬 데이터 폴더 경로 설정 (Windows 기준)
@@ -13,7 +88,7 @@ def get_connection():
         os.makedirs(app_data_path)
 
     # 3. 사용할 실제 DB 경로
-    db_path = os.path.join(app_data_path, "rich_db.sqlite")
+    db_path = os.path.join(app_data_path, DB_NAME)
 
     # 4. DB 파일이 없으면(첫 실행 시), 내장된 초기 DB를 복사해옴
     if not os.path.exists(db_path):
@@ -21,7 +96,6 @@ def get_connection():
         template_db = resource_path("rich_db")
         if os.path.exists(template_db):
             shutil.copy(template_db, db_path)
-
     # 5. 이제 항상 내장 파일이 아닌 '유저 개인 폴더'의 파일을 연결함
     return sqlite3.connect(db_path)
 
@@ -37,6 +111,8 @@ def setup_database():
         elif current_ver < cur_db_ver:
             run_sql_file("sqlver_3.sql")
             update_version_record(cur_db_ver)
+        if (init_db_from_csv()):
+            create_index_default_ticker()
         current_user = get_user_id()
         get_user_ticker_list(current_user)
         set_user_webhook()
@@ -44,6 +120,42 @@ def setup_database():
     except Exception as e:
         print_error(f"setup 오류 발생: {e}")
 
+def get_default_ticker_list():
+    try:
+        with get_connection() as conn:
+            with conn:
+                cur = conn.cursor()
+                cur.execute("SELECT short_code,short_name_ko FROM default_tickers")
+                result = cur.fetchall()
+                cur.close()
+                return result
+    except Exception as e:
+        print_error(f"기본 주식 목록 인덱스 생성 실패:{e}")
+        return []
+
+def get_like_default_ticker_list(input):
+    try:
+        with get_connection() as conn:
+            with conn:
+                cur = conn.cursor()
+                query = "SELECT short_code, short_name_ko, market_type FROM default_tickers WHERE short_code LIKE ? OR short_name_ko LIKE ? LIMIT 50"
+                cur.execute(query, (f"%{input}%", f"%{input}%"))
+                result = cur.fetchall()
+                cur.close()
+                return result
+    except Exception as e:
+        print_error(f"기본 주식 목록 인덱스 생성 실패:{e}")
+        return []
+
+def create_index_default_ticker():
+    try:
+        with get_connection() as conn:
+            with conn:
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_name_ko ON default_tickers(short_name_ko)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_std_code ON default_tickers(short_code)")
+                print_ok("기본 주식 목록 인덱스 생성 성공")
+    except Exception as e:
+        print_error(f"기본 주식 목록 인덱스 생성 실패:{e}")
 
 def get_user_market_type():
     try:
@@ -137,8 +249,7 @@ def update_version_record(new_ver):
         with get_connection() as conn:
             with conn:
                 cur = conn.cursor()
-                cur.execute("DELETE FROM db_ver;")
-                cur.execute("INSERT INTO db_ver (ver) VALUES (?)", (new_ver,))
+                cur.execute("INSERT OR REPLACE INTO db_ver (ver) VALUES (?)", (new_ver,))
                 cur.close()
     except Exception as e:
         print_error(f"버전 정보 얻기 실패: {e}")
@@ -220,7 +331,7 @@ def get_user_ticker_list(user_id):
                 return results
     except Exception as e:
         print_error(f"종목 삭제 실패:{e}")
-        return False
+        return []
 
 
 def execute_many_transactions(query, data_list):

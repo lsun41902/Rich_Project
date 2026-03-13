@@ -24,10 +24,27 @@ CREATE TABLE IF NOT EXISTS tickers (
     UNIQUE (user_id, ticker_code) -- ON CONFLICT 처리를 위해 필수
 );
 
+--기본 종목 테이블
+CREATE TABLE IF NOT EXISTS default_tickers(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,-- 번호
+    std_code TEXT UNIQUE DEFAULT '', -- 표준코드
+    short_code TEXT DEFAULT '',-- 단축코드
+    name_ko TEXT DEFAULT '',-- 한글 종목명
+    short_name_ko TEXT DEFAULT '',-- 한글 종목약명
+    name_en TEXT DEFAULT '',-- 영문 종목명
+    listing_date TEXT DEFAULT '',-- 상장일
+    market_type TEXT DEFAULT '',-- 시장구분
+    security_type TEXT DEFAULT '',-- 증권구분
+    dept_type TEXT DEFAULT '',-- 소속부
+    stock_type TEXT DEFAULT '',-- 주식종류
+    face_value INTEGER DEFAULT 0,-- 액면가
+    total_shares INTEGER DEFAULT 0-- 상장주식수
+);
+
 -- 3. 버전 및 설정 테이블
 CREATE TABLE IF NOT EXISTS db_ver (ver INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS configs (cur_user_id INTEGER NOT NULL);
-
+CREATE TABLE IF NOT EXISTS ticker_ver (ver TEXT DEFAULT '');
 
 -- 초기 데이터 삽입
 INSERT INTO configs (cur_user_id) VALUES (0);

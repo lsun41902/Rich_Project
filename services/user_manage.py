@@ -28,7 +28,7 @@ def open_user_discord(app, item_values):
     ent_name.insert(0, default_name)
     ent_name.pack()
 
-    tk.Label(add_win, text="webhook").pack(pady=15)
+    tk.Label(add_win, text="webhook").pack(pady=5)
     ent_webhook = tk.Entry(add_win, width=50)
     ent_webhook.insert(0, default_webhook)
     ent_webhook.pack()

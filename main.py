@@ -18,6 +18,7 @@ def send_discord_message(content):
         except Exception as e:
             print(f"⚠️ 연결 오류: {e}")
 
+
 def main():
     setup_database()
 

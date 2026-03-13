@@ -10,6 +10,20 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolb
 import matplotlib.dates as mdates
 import matplotlib.font_manager as fm
 
+
+def center_window(window, width, height, parent):
+    # parent가 None이면 화면 정중앙
+    if parent is None:
+        screen_width = window.winfo_screenwidth()
+        screen_height = window.winfo_screenheight()
+        x = (screen_width // 2) - (width // 2)
+        y = (screen_height // 2) - (height // 2)
+    else:
+        x = parent.winfo_x() + (parent.winfo_width() // 2) - (width // 2)
+        y = parent.winfo_y() + (parent.winfo_height() // 2) - (height // 2)
+
+    window.geometry(f"{width}x{height}+{x}+{y}")
+    
 def show_chart(self, item_data):
     ticker_code = item_data[0]
 
@@ -17,6 +31,7 @@ def show_chart(self, item_data):
     chart_window = tk.Toplevel(self.root)
     chart_window.title(f"{item_data[1]} 실시간 차트")
     chart_window.geometry("800x650")
+    center_window(chart_window,800,600,self.root)
 
     top_info_frame = tk.Frame(chart_window)
     top_info_frame.pack(side="top", fill="x", pady=5)
@@ -272,3 +287,4 @@ def show_chart(self, item_data):
     on_button_click(0)
     # 차트 창이 열릴 때 업데이트 시작
     update_price()
+
