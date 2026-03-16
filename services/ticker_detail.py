@@ -1,67 +1,145 @@
 import tkinter as tk
 import config
-from datetime import datetime,timedelta
+from datetime import datetime, timedelta
 import FinanceDataReader as fdr
 
 from dateutil.relativedelta import relativedelta
 import mplfinance as mpf
-import pandas as pd
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
-import matplotlib.dates as mdates
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.ticker import ScalarFormatter
 import matplotlib.font_manager as fm
+from services.ui_helper import center_window, check_stock_open_close_time, pull_request_stock
+from matplotlib.ticker import FuncFormatter
+import locale
+
+# 시스템에 따라 'ko_KR.UTF-8' 또는 'ko_KR'을 사용합니다.
+try:
+    locale.setlocale(locale.LC_TIME, 'ko_KR.UTF-8')
+except:
+    locale.setlocale(locale.LC_TIME, 'ko_KR')
 
 
-def center_window(window, width, height, parent):
-    # parent가 None이면 화면 정중앙
-    if parent is None:
-        screen_width = window.winfo_screenwidth()
-        screen_height = window.winfo_screenheight()
-        x = (screen_width // 2) - (width // 2)
-        y = (screen_height // 2) - (height // 2)
-    else:
-        x = parent.winfo_x() + (parent.winfo_width() // 2) - (width // 2)
-        y = parent.winfo_y() + (parent.winfo_height() // 2) - (height // 2)
+class CandleCart:
+    def __init__(self, app, item_data):
+        self.app = app
+        self.root = app.root
+        self.item_data = item_data
+        self.open_price = item_data[2]
 
-    window.geometry(f"{width}x{height}+{x}+{y}")
-    
-def show_chart(self, item_data):
-    ticker_code = item_data[0]
+        font_list = fm.findSystemFonts(fontpaths=None, fontext='ttf')
+        malgun_bold = [f for f in font_list if 'malgunbd' in f.lower()][0]
+        self.font_prop = fm.FontProperties(fname="C:/Windows/Fonts/malgun.ttf", size=10)  # 폰트 속성 생성
 
-    # 1. 새 창 설정
-    chart_window = tk.Toplevel(self.root)
-    chart_window.title(f"{item_data[1]} 실시간 차트")
-    chart_window.geometry("800x650")
-    center_window(chart_window,800,600,self.root)
+        self.font_prop_bold = fm.FontProperties(fname=malgun_bold, size=10)  # 폰트 속성 생성
 
-    top_info_frame = tk.Frame(chart_window)
-    top_info_frame.pack(side="top", fill="x", pady=5)
+        self.full_df = self.get_date_range()
+        # [수정] 차트 뼈대를 그릴 객체들 선언
 
-    top_info_frame.grid_columnconfigure(0, weight=1)  # 왼쪽 빈 공간
-    top_info_frame.grid_columnconfigure(1, weight=0)  # 종목명 (고정)
-    top_info_frame.grid_columnconfigure(2, weight=0)  # 현재가 (고정)
-    top_info_frame.grid_columnconfigure(3, weight=1)  # 오른쪽 빈 공간
+        self.ax = None
+        self.canvas = None
+        self.is_dragging = False
+        self.press_data_x = 0  # 드래그 시작 시의 마우스 x좌표
+        self.press_pixel_x = 0
 
-    # 2. 종목명 레이블 (grid 사용)
-    ticker_name_label = tk.Label(top_info_frame, text=f"{item_data[1]}", font=("Arial", 14, "bold"))
-    ticker_name_label.grid(row=0, column=1, padx=10)
+        self.init_ui()
+        self.init_chart()  # 차트 뼈대 생성
+        self.update_price()
 
-    # 3. 실시간 금액 레이블 (grid 사용)
-    price_label = tk.Label(top_info_frame, text="로딩 중...", font=("Arial", 14), fg="blue")
-    price_label.grid(row=0, column=2, padx=10)
+    def init_ui(self):
+        # 1. 새 창 설정
+        self.chart_window = tk.Toplevel(self.root)
+        self.chart_window.title(f"{self.item_data[1]} 실시간 차트")
+        center_window(self.chart_window, 800, 600, self.root)
 
-    # [핵심] 2. 레이아웃 프레임 분리
-    # 상단 버튼 영역
-    button_frame = tk.Frame(chart_window)
-    button_frame.pack(side="top", fill="x", padx=5, pady=5)
+        top_info_frame = tk.Frame(self.chart_window)
+        top_info_frame.pack(side="top", fill="x", pady=5)
 
-    # 하단 차트 영역 (이 영역을 draw_professional_chart가 사용)
-    chart_frame = tk.Frame(chart_window)
-    chart_frame.pack(side="top", fill="both", expand=True)
+        top_info_frame.grid_columnconfigure(0, weight=1)  # 왼쪽 빈 공간
+        top_info_frame.grid_columnconfigure(1, weight=0)  # 종목명 (고정)
+        top_info_frame.grid_columnconfigure(2, weight=0)  # 현재가 (고정)
+        top_info_frame.grid_columnconfigure(3, weight=1)  # 오른쪽 빈 공간
+        # 2. 종목명 레이블 (grid 사용)
+        ticker_name_label = tk.Label(top_info_frame, text=f"{self.item_data[1]}", font=("Arial", 14, "bold"))
+        ticker_name_label.grid(row=0, column=1, padx=10)
+        # 3. 실시간 금액 레이블 (grid 사용)
+        self.price_label = tk.Label(top_info_frame, text="로딩 중...", font=("Arial", 14), fg="blue")
+        self.price_label.grid(row=0, column=2, padx=10)
+        # [핵심] 2. 레이아웃 프레임 분리
+        # 상단 버튼 영역
+        button_frame = tk.Frame(self.chart_window)
+        button_frame.pack(side="top", fill="x", padx=5, pady=5)
 
-    # df를 외부 범위(show_chart 함수 내부)에서 참조할 수 있게 선언 필요
-    current_df = None
+        # 하단 차트 영역 (이 영역을 draw_professional_chart가 사용)
+        self.chart_frame = tk.Frame(self.chart_window)
+        self.chart_frame.pack(side="top", fill="both", expand=True)
 
-    def get_current_price_fdr(code):
+        # 4. 버튼 생성
+        types = [("1주", 0), ("1달", 1), ("3달", 2), ("1년", 3)]
+        for text, val in types:
+            btn = tk.Button(button_frame, text=text, command=lambda v=val: self.on_draw_chart(v))
+            btn.pack(side="left", padx=5)
+
+    def init_chart(self):
+        df = self.full_df.sort_index()
+        mc = mpf.make_marketcolors(up='red', down='blue', edge='inherit', wick='inherit')
+        s = mpf.make_mpf_style(marketcolors=mc, gridstyle='--')
+
+        # [핵심] fig, ax를 self로 저장
+        fig, axes = mpf.plot(df, type='candle', mav=(5, 20, 60), style=s,
+                                  returnfig=True, figsize=(7, 5))
+        self.ax = axes[0]
+
+        self.canvas = FigureCanvasTkAgg(fig, master=self.chart_frame)
+        self.canvas.get_tk_widget().pack(side="top", fill="both", expand=True)
+
+        # Annotation 초기화
+        self.cursor_annotation = self.ax.annotate("", xy=(0, 0), xytext=(20, 20),
+                                                  textcoords="offset points",
+                                                  bbox=dict(boxstyle="round", fc="w"),
+                                                  arrowprops=dict(arrowstyle="->"))
+        self.cursor_annotation.set_fontproperties(self.font_prop)
+
+        # Annotation 초기화
+        self.cursor_annotation_high = self.ax.annotate("", xy=(0, 0), xytext=(20, 20),
+                                                  textcoords="offset points",color="white",fontweight="bold",
+                                                  bbox=dict(boxstyle="round", fc="red",alpha=0.8),
+                                                  arrowprops=dict(arrowstyle="->",color="red"))
+        self.cursor_annotation_high.set_fontproperties(self.font_prop_bold)
+
+        # Annotation 초기화
+        self.cursor_annotation_low = self.ax.annotate("", xy=(0, 0), xytext=(20, 20),
+                                                  textcoords="offset points",color="white",fontweight="bold",
+                                                  bbox=dict(boxstyle="round",  fc="blue",alpha=0.8),
+                                                  arrowprops=dict(arrowstyle="->",color="blue"))
+        self.cursor_annotation_low.set_fontproperties(self.font_prop_bold)
+
+        self.cursor_annotation.set_visible(False)
+        self.cursor_annotation_high.set_visible(True)
+        self.cursor_annotation_low.set_visible(True)
+
+        formatter = ScalarFormatter()
+        formatter.set_scientific(False)
+        formatter.set_useOffset(False)
+        self.ax.yaxis.set_major_formatter(FuncFormatter(self.price_formatter))
+        fig.tight_layout()
+
+        # 이벤트 연결 (이 시점에 self.ax가 존재하므로 안전함)
+        self.ax.callbacks.connect('xlim_changed', self.limit_check_and_apply)
+        self.canvas.mpl_connect('scroll_event', self.on_scroll)
+        self.canvas.mpl_connect('button_press_event', self.on_press)
+        self.canvas.mpl_connect('button_release_event', self.on_release)
+        self.canvas.mpl_connect('motion_notify_event', self.on_motion)
+
+        # 첫 화면(1주)으로 초기 범위 설정
+        self.on_draw_chart(0)
+
+    def price_formatter(self, x, pos):
+        return f"{int(x):,}"
+
+    def index_formatter(self, x, pos):
+        return f"{int(x)}"
+
+    def get_current_price_fdr(self, code):
         default_code, suffix = code.split('.')
 
         selected = config.MY_INFO[0]['market_type']
@@ -93,198 +171,185 @@ def show_chart(self, item_data):
             print(f"📡 fdr 데이터 로드 오류 ({symbol}): {e}")
         return 0
 
-    def update_price():
-        nonlocal current_df, price_label  # 상위 함수의 변수를 수정하겠다고 선언
+    def update_price(self):
+        if check_stock_open_close_time():
+            self.get_request()
+            # 1초 후 자기 자신을 다시 호출 (무한 루프)
+            self.chart_window.after(1000, self.update_price)
+        else:
+            self.get_request()
 
+    def get_request(self):
         try:
             # 실시간 데이터 가져오기 (직접 만드신 함수 활용)
-            data = get_current_price_fdr(ticker_code)
-            if data is not None and not data.empty:
-                current_df = data
-                realtime_price = current_df['Close'].iloc[-1]
+            df = pull_request_stock(self.item_data[0])
+            if df is not None and not df.empty:
+                realtime_price = df['Close'].iloc[-1]
                 # 실시간 가격 업데이트
-                price_label.config(text=f"현재가: {realtime_price:,}원")
+                # 1. 색상 결정 (로직에 따라)
+                if realtime_price > self.open_price and self.open_price != 0:
+                    new_color = "red"  # 상승 시 빨간색
+                    prefix = "▲ "
+                elif realtime_price < self.open_price and self.open_price != 0:
+                    new_color = "blue"  # 하락 시 파란색
+                    prefix = "▼ "
+                else:
+                    new_color = "black"  # 같을 경우 검은색
+                    prefix = "  "
 
-                # 필요하다면 여기서 캔들 차트를 갱신하는 canvas.draw_idle() 호출
+                # 2. Label 업데이트 (텍스트와 색상 동시 적용)
+                self.price_label.config(
+                    text=f"현재가: {prefix}{realtime_price:,}원",
+                    fg=new_color
+                )
         except Exception as e:
             print(f"업데이트 오류: {e}")
 
-        # 1초 후 자기 자신을 다시 호출 (무한 루프)
-        chart_window.after(1000, update_price)
 
-    # 3. 버튼 클릭 시 호출될 통합 데이터 로딩 함수
-    def on_button_click(day_type):
-        # 0:일, 1:주, 2:월, 3:년
-        start_str, end_str = get_date_range(day_type)
+    def on_draw_chart(self, date_type):
+        total_len = len(self.full_df)
 
-        # 기존 로직: 심볼 변환 후 데이터 로드
-        default_code, suffix = ticker_code.split('.')
-        selected = config.MY_INFO[0]['market_type']
+        # 0:1주(7), 1:1달(22), 2:3달(66), 3:1년(250)
+        view_range = {0: 7, 1: 22, 2: 66, 3: 250}.get(date_type, total_len)
 
-        # 심볼 생성 로직
-        if selected == 0:
-            symbol = f"NAVER:{ticker_code.split('.')[0]}"
-        elif selected == 1:
-            symbol = ticker_code.split('.')[0]
-        elif selected == 2:
-            symbol = f"YAHOO:{default_code}.{suffix}"
-        else:
-            symbol = ticker_code
+        start_idx = max(0, total_len - view_range)
+        end_idx = total_len - 1
 
-        try:
-            df = fdr.DataReader(symbol, start=start_str, end=end_str)
-            # 차트 프레임에 그리기
-            draw_professional_chart(df, chart_frame)
-        except Exception as e:
-            print(f"데이터 로드 오류: {e}")
+        # 캔들차트의 X축은 인덱스(0, 1, 2...)이므로 인덱스로 범위를 잡습니다.
+        self.ax.set_xlim(start_idx - 0.5, end_idx + 0.5)
+        visible_min, visible_max = self.get_visible_max_price()  # 직접 만드신 함수
+        self.ax.set_ylim(visible_min * 0.98, visible_max * 1.02)
+        self.canvas.draw_idle()
 
-    def get_date_range(day_type):
-        end_date = datetime.now()
-
-        if day_type == 1:  # 주 (최근 1주일치 데이터를 보여주고 싶을 때)
-            start_date = end_date - relativedelta(days=30)
-        elif day_type == 2:  # 월 (최근 3개월치 흐름을 보고 싶을 때)
-            start_date = end_date - relativedelta(months=3)
-        elif day_type == 3:  # 년 (최근 1년치 흐름을 보고 싶을 때)
-            start_date = end_date - relativedelta(years=1)
-        else: # 일
-            start_date = end_date - relativedelta(days=7)  # 기본값 하루
-
-        start_str = start_date.strftime('%Y-%m-%d')
-        end_str = end_date.strftime('%Y-%m-%d')
+    def get_date_range(self):
+        symbol = f"NAVER:{self.item_data[0].split('.')[0]}"
+        start_str = (datetime.now() - relativedelta(years=2)).strftime('%Y-%m-%d')
+        end_str = datetime.now().strftime('%Y-%m-%d')
         print(f"시작일:{start_str}, 종료일:{end_str}")
-        return start_str, end_str
+        df = fdr.DataReader(symbol, start=start_str, end=end_str)
+        print(df.head())
+        return df
 
+    # 휠 이벤트 연결 (이제 휠 줌도 축 범위 변경을 유발하므로 자동으로 위의 함수가 작동함)
+    def on_scroll(self, event):
+        if event.inaxes != self.ax: return
+        base_scale = 1.2
+        scale = 1 / base_scale if event.button == 'up' else base_scale
 
+        # 1. 현재 축 범위 가져오기
+        cur_xlim = self.ax.get_xlim()
+        cur_ylim = self.ax.get_ylim()
 
-    def draw_professional_chart(df, chart_frame):
-        # 기존 차트 제거
-        for widget in chart_frame.winfo_children():
-            widget.destroy()
+        # 2. 마우스 위치 기준 잡기
+        xdata, ydata = event.xdata, event.ydata
 
-        # 데이터 전처리
-        df.index = pd.to_datetime(df.index)
-        df.index.name = 'Date'
-        df = df.sort_index()
+        # 3. 새로운 범위 계산 (X와 Y 동일하게 적용)
+        new_width = (cur_xlim[1] - cur_xlim[0]) * scale
+        new_height = (cur_ylim[1] - cur_ylim[0]) * scale
 
-        mc = mpf.make_marketcolors(up='red', down='blue', edge='inherit', wick='inherit')
-        s = mpf.make_mpf_style(marketcolors=mc, gridstyle='--')
+        relx = (cur_xlim[1] - xdata) / (cur_xlim[1] - cur_xlim[0])
+        rely = (cur_ylim[1] - ydata) / (cur_ylim[1] - cur_ylim[0])
 
-        fig, axes = mpf.plot(df, type='candle', mav=(5, 20, 60), style=s,
-                             returnfig=True, figsize=(7, 5),
-                             datetime_format='%Y-%m-%d', tight_layout=False)
+        # 4. 축 업데이트
+        self.ax.set_xlim(xdata - new_width * (1 - relx), xdata + new_width * relx)
+        visible_min, visible_max = self.get_visible_max_price()  # 직접 만드신 함수
+        self.ax.set_ylim(visible_min * 0.98, visible_max * 1.02)
 
-        fig.subplots_adjust(bottom=0.25)
+        self.canvas.draw_idle()
 
-        ax = axes[0]
-        # 캔버스 배치
-        canvas = FigureCanvasTkAgg(fig, master=chart_frame)
-        canvas.draw()
-        canvas.get_tk_widget().pack(side="top", fill="both", expand=True)
+    def get_visible_max_price(self):
+        # 1. 현재 화면의 X축 범위 가져오기
+        cur_min, cur_max = self.ax.get_xlim()
 
-        # 폰트 경로 설정 (Windows 기준 '맑은 고딕')
-        # 만약 맥이라면 font_path = "/Library/Fonts/AppleGothic.ttf" 로 변경
-        font_path = "C:/Windows/Fonts/malgun.ttf"
-        font_prop = fm.FontProperties(fname=font_path, size=10)  # 폰트 속성 생성
+        # 2. 범위를 정수로 변환 (인덱스처럼 사용)
+        start_idx = max(0, int(round(cur_min)))
+        end_idx = min(len(self.full_df) - 1, int(round(cur_max)))
 
-        # 1. 캔들 차트의 데이터(close)와 날짜를 접근하기 쉽게 준비
-        cursor_annotation = ax.annotate("", xy=(0, 0), xytext=(20, 20),
-                                        textcoords="offset points",
-                                        bbox=dict(boxstyle="round", fc="w"),
-                                        arrowprops=dict(arrowstyle="->"))
-        cursor_annotation.set_visible(False)
+        # 3. 해당 범위 내의 데이터 슬라이싱
+        visible_data = self.full_df.iloc[start_idx: end_idx + 1]
 
+        # 4. 'High' 컬럼에서 최댓값 찾기
+        if not visible_data.empty:
+            max_price = visible_data['High'].max()
+            min_price = visible_data['Low'].min()
 
+            real_max_idx = start_idx + visible_data.index.get_loc(visible_data['High'].idxmax())
+            real_min_idx = start_idx + visible_data.index.get_loc(visible_data['Low'].idxmin())
 
+            self.cursor_annotation_high.set_text(f"가격: {max_price:,}")
+            self.cursor_annotation_high.xy = (real_max_idx,max_price)
 
-        def on_mouse_move(event):
-            if not event.inaxes == ax:
-                cursor_annotation.set_visible(False)
-                canvas.draw_idle()
-                return
+            self.cursor_annotation_low.set_text(f"가격: {min_price:,}")
+            self.cursor_annotation_low.xy = (real_min_idx, min_price)
 
-            # 마우스 x좌표에 가장 가까운 인덱스 찾기
-            x_idx = int(round(event.xdata))
-            if 0 <= x_idx < len(df):
-                # 해당 인덱스의 종가(Close) 가져오기
-                close_price = df['Close'].iloc[x_idx]
-                date_str = df.index[x_idx].strftime('%Y-%m-%d')
-                cursor_annotation.set_fontproperties(font_prop)
-                # 텍스트 및 위치 업데이트
-                cursor_annotation.set_text(f"가격: {close_price:,}")
-                cursor_annotation.xy = (x_idx, close_price)
-                cursor_annotation.set_visible(True)
-                canvas.draw_idle()
+            return min_price, max_price
+        return None
 
-        def limit_check_and_apply(ax):
-            # 1. 모든 날짜 데이터를 숫자로 변환 (비교의 기준을 float로 통일)
-            # df.index는 이미 정렬되어 있으므로 처음과 끝을 바로 숫자로 변환
-            df_indices = mdates.date2num(df.index)
-            min_limit = df_indices.min()
-            max_limit = df_indices.max()
+    def on_press(self, event):
+        if event.inaxes == self.ax:
+            self.is_dragging = True
+            self.press_data_x = event.xdata  # 시작 지점 저장
+            self.press_pixel_x = event.x
 
-            # 2. 현재 축 범위 (숫자값)
-            cur_min, cur_max = ax.get_xlim()
+    def on_release(self, event):
+        self.is_dragging = False
 
-            # 3. 현재 보이는 캔들 개수 확인 (숫자 범위 내에 있는 데이터 개수)
-            # 데이터 자체가 아닌 '숫자'로 범위를 필터링
-            visible_count = len([val for val in df_indices if cur_min <= val <= cur_max])
+    def on_motion(self, event):
+        if not event.inaxes == self.ax:
+            self.cursor_annotation.set_visible(False)
+            self.canvas.draw_idle()
+            return
 
-            # 4. 제한 적용 로직
-            # 캔들이 너무 적으면 확대 방지
-            if visible_count < 5:
-                return
+        if self.is_dragging:
+            # 1. 이동한 픽셀 거리 계산
+            dx_pixel = event.x - self.press_pixel_x
 
-            # 범위를 벗어나면 강제 조정
-            needs_redraw = False
-            new_min, new_max = cur_min, cur_max
+            # 2. 픽셀 변화량을 데이터 단위로 환산
+            data_range = self.ax.get_xlim()[1] - self.ax.get_xlim()[0]
+            width_pixel = self.canvas.get_tk_widget().winfo_width()
+            data_shift = (dx_pixel / width_pixel) * data_range
 
-            if cur_min < min_limit:
-                new_min = min_limit
-                needs_redraw = True
-            if cur_max > max_limit:
-                new_max = max_limit
-                needs_redraw = True
+            # 3. 데이터 좌표가 마우스를 따라오도록 이동
+            # 클릭 시점의 데이터 좌표(press_data_x)를 현재 마우스 위치(data_shift 보정)에 배치
+            target_center = self.press_data_x - data_shift
 
-            if needs_redraw:
-                ax.set_xlim(new_min, new_max)
-                canvas.draw_idle()
+            # 현재 화면의 너비를 유지하며 이동
+            half_width = data_range / 2
+            self.ax.set_xlim(target_center - half_width, target_center + half_width)
+            visible_min, visible_max = self.get_visible_max_price()  # 직접 만드신 함수
+            self.ax.set_ylim(visible_min * 0.98, visible_max * 1.02)
 
-        # 축 범위가 변할 때마다 호출
-        ax.callbacks.connect('xlim_changed', limit_check_and_apply)
+        # 마우스 x좌표에 가장 가까운 인덱스 찾기
+        x_idx = int(round(event.xdata))
+        if 0 <= x_idx < len(self.full_df):
+            # 해당 인덱스의 종가(Close) 가져오기
+            close_price = self.full_df['Close'].iloc[x_idx]
+            self.cursor_annotation.set_text(f"가격: {close_price:,}")
+            self.cursor_annotation.xy = (x_idx, close_price)
+            self.cursor_annotation.set_visible(True)
+        self.canvas.draw_idle()
 
-        # 휠 이벤트 연결 (이제 휠 줌도 축 범위 변경을 유발하므로 자동으로 위의 함수가 작동함)
-        def on_scroll(event):
-            if event.inaxes != ax: return
-            base_scale = 1.2
-            scale = 1 / base_scale if event.button == 'up' else base_scale
+    def limit_check_and_apply(self, *args):
+        # 1. 인덱스 기반 경계값 설정
+        total_len = len(self.full_df)
+        min_limit = -0.5
+        max_limit = total_len - 0.5
 
-            cur_xlim = ax.get_xlim()
-            xdata = event.xdata
-            new_width = (cur_xlim[1] - cur_xlim[0]) * scale
-            relx = (cur_xlim[1] - xdata) / (cur_xlim[1] - cur_xlim[0])
+        # 2. 현재 축 범위 가져오기
+        cur_min, cur_max = self.ax.get_xlim()
 
-            ax.set_xlim(xdata - new_width * (1 - relx), xdata + new_width * relx)
-            canvas.draw_idle()
+        # 3. 제한 적용 로직 (인덱스 기준)
+        needs_redraw = False
+        new_min, new_max = cur_min, cur_max
 
-        fig.canvas.mpl_connect('scroll_event', on_scroll)
-        fig.canvas.mpl_connect('motion_notify_event', on_mouse_move)
+        if cur_min < min_limit:
+            new_min = min_limit
+            needs_redraw = True
+        if cur_max > max_limit:
+            new_max = max_limit
+            needs_redraw = True
 
-        # 툴바 배치 (줌/이동 가능)
-        toolbar = NavigationToolbar2Tk(canvas, chart_frame)
-        toolbar.update()
-        toolbar.pack(side="bottom", fill="x")
-        toolbar.pan()
-
-    # 4. 버튼 생성
-    types = [("1주", 0), ("1달", 1), ("3달", 2), ("1년", 3)]
-    for text, val in types:
-        btn = tk.Button(button_frame, text=text, command=lambda v=val: on_button_click(v))
-        btn.pack(side="left", padx=5)
-
-
-    # 5. 초기 호출 (기본값 년/3)
-    on_button_click(0)
-    # 차트 창이 열릴 때 업데이트 시작
-    update_price()
+        if needs_redraw:
+            self.ax.set_xlim(new_min, new_max)
+            self.canvas.draw_idle()
 

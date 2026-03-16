@@ -3,7 +3,7 @@ from tkinter import messagebox
 import database.connection_SQL as db
 import config
 from services.ticker_search import TickerSearch
-from services.ui_helper import center_window,set_korean_ime
+from services.ui_helper import center_window,set_korean_ime, show_message_box
 
 class TickerManage:
     def __init__(self,app, item_values=None,db_id=None):
@@ -94,14 +94,14 @@ class TickerManage:
             all_tickers = db.get_default_ticker_list()
             code_list = [ticker[0] for ticker in all_tickers]
             if raw_code not in code_list:
-                show_message_box2("경고", "코드를 확인해 주세요.", type=1)
+                show_message_box("경고", "코드를 확인해 주세요.", mtype=1)
                 return  # 여기서 멈춰야 합니다! 뒤의 코드가 실행되지 않게 하세요.
 
             # 2. 검증: 빈 칸 확인
             name = self.ent_name.get().strip()
             price = ent_price.get().strip()
             if not (raw_code and name and price):
-                show_message_box2("경고", "모든 정보를 입력해주세요.", type=1)
+                show_message_box("경고", "모든 정보를 입력해주세요.", mtype=1)
                 return  # 여기서 멈추세요!
 
             # 3. 저장 로직 (모든 검증 통과 후)
@@ -117,14 +117,6 @@ class TickerManage:
             add_win.destroy()  # 저장이 완료된 직후에만 여기서 닫습니다.
 
         tk.Button(add_win, text="저장", command=save_new_ticker, width=15, bg="#e1f5fe").pack(pady=25)
-
-        def show_message_box2(title, message, type=0):
-            if type == 0:
-                return messagebox.askyesno(title, message, parent=add_win)
-            elif type == 1:
-                return messagebox.showwarning(title, message, parent=add_win)
-            else:
-                return messagebox.askyesno(title, message, parent=add_win)
 
     def open_search_window(self,event=None):
         default_search = self.ent_code.get().strip()

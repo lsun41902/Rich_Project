@@ -3,7 +3,7 @@ from tkinter import ttk, messagebox
 import database.connection_SQL as db
 import config
 from services.ticker_manage import TickerManage
-from services.ui_helper import center_window
+from services.ui_helper import center_window, show_message_box
 
 class TickersManageList:
     def __init__(self,app):
@@ -105,17 +105,10 @@ class TickersManageList:
 
         db_id = selected[0]  # 선택된 행의 iid가 곧 db_id
 
-        if self.show_message_box("삭제 확인", "선택한 종목을 삭제할까요?", type=0):
+        if show_message_box("삭제 확인", "선택한 종목을 삭제할까요?", mtype=0):
             db.delete_ticker_to_db(db_id)  # ID로 삭제
             self.refresh_tree()
 
-    def show_message_box(self, title, message, type=0):
-        if type == 0:
-            return messagebox.askyesno(title, message, parent=self.header_frame)
-        elif type == 1:
-            return messagebox.showwarning(title, message, parent=self.header_frame)
-        else:
-            return messagebox.askyesno(title, message, parent=self.header_frame)
 
     def add_item_window(self,item_values=None,db_id=None):
         TickerManage(self,item_values,db_id)

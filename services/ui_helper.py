@@ -37,3 +37,61 @@ def set_korean_ime():
 
         # 5. 컨텍스트 해제 (메모리 관리)
         ctypes.windll.imm32.ImmReleaseContext(hwnd, himc)
+
+from tkinter import messagebox
+
+
+def show_message_box(self, title, message, mtype=0):
+    if mtype == 0:
+        return messagebox.askyesno(title, message, parent=self.header_frame)
+    elif mtype == 1:
+        return messagebox.showwarning(title, message, parent=self.header_frame)
+    else:
+        return messagebox.askyesno(title, message, parent=self.header_frame)
+
+from datetime import datetime, timedelta
+def check_stock_open_close_time():
+    now = datetime.now()
+    if (now.hour == 9 and now.minute >= 0) or (9 < now.hour < 15) or (now.hour == 15 and now.minute <= 20):
+        return True
+    else:
+        return False
+
+
+import FinanceDataReader as fdr
+import config
+
+def pull_request_stock(code):
+    try:
+        default_code, suffix = code.split('.')
+
+        selected = config.MY_INFO[0]['market_type']
+
+        # 오늘과 7일 전 날짜 설정
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=7)
+
+        # 형식 변환
+        start_str = start_date.strftime('%Y-%m-%d')
+        end_str = end_date.strftime('%Y-%m-%d')
+
+        # 넉넉한 기간으로 조회
+        # 라디오 버튼 값에 따라 소스 접두어 설정
+        ticker = code.split('.')
+        print(ticker)
+        if selected == 0:  # Naver
+            symbol = f"NAVER:{ticker[0]}"
+        elif selected == 1:  # KRX
+            symbol = ticker[0]
+        elif selected == 2:  # Yahoo
+            symbol = f"YAHOO:{default_code}.{suffix}"  # 야후는 .KS 접미사 필요
+        else:
+            symbol = code
+        try:
+            df = fdr.DataReader(symbol, start=start_str, end=end_str)
+            return df
+        except Exception as e:
+            print(f"📡 fdr 데이터 로드 오류 ({symbol}): {e}")
+        return 0
+    except Exception as e:
+        print(f"업데이트 오류: {e}")
