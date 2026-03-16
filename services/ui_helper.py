@@ -12,15 +12,28 @@ def center_window(window, width, height, parent):
     window.geometry(f"{width}x{height}+{x}+{y}")
 
 
-import win32api
-import win32con
-import win32gui
+import ctypes
+import pyautogui
 
 def set_korean_ime():
-    # 현재 포커스가 있는 윈도우의 핸들(hwnd)을 가져옴
-    hwnd = win32gui.GetForegroundWindow()
-    # HIMC(Input Context)를 열어서 한글 모드(0x01)로 설정
-    # 0x0003: 가져오기, 0x0006: 설정하기
-    himc = win32api.SendMessage(hwnd, win32con.WM_IME_CONTROL, 0x0003, 0)
+    # 1. 현재 포커스된 창의 핸들 가져오기
+    hwnd = ctypes.windll.user32.GetForegroundWindow()
+    # 2. 입력기 컨텍스트(IMC) 가져오기
+    himc = ctypes.windll.imm32.ImmGetContext(hwnd)
+
     if himc:
-        win32api.SendMessage(himc, win32con.WM_IME_CONTROL, 0x0006, 0x0001)
+        # 3. 현재 변환 상태 가져오기
+        # dwConversion: 1이면 한글, 0이면 영어
+        dwConversion = ctypes.wintypes.DWORD()
+        dwSentence = ctypes.wintypes.DWORD()
+        ctypes.windll.imm32.ImmGetConversionStatus(himc, ctypes.byref(dwConversion), ctypes.byref(dwSentence))
+
+        # 4. 상태 확인 (dwConversion.value가 0이면 영어 모드임)
+        if dwConversion.value == 0:
+            print("현재 영어 모드입니다. 한글로 전환합니다.")
+            pyautogui.press('hangul')
+        else:
+            print("이미 한글 모드입니다.")
+
+        # 5. 컨텍스트 해제 (메모리 관리)
+        ctypes.windll.imm32.ImmReleaseContext(hwnd, himc)

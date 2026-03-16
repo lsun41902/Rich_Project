@@ -1,13 +1,14 @@
 import tkinter as tk
 from tkinter import messagebox
 import database.connection_SQL as db
+from services.ui_helper import center_window,set_korean_ime
 
 
 def open_user_discord(app, item_values):
     data_list = item_values[0]
     add_win = tk.Toplevel(app.root)
     add_win.title("유저 관리")
-    add_win.geometry("500x350")
+    center_window(add_win, 500,350, app.root)
 
     # 1. 라디오 버튼용 변수 (기본값: .KS)
     market_var = tk.IntVar(value=data_list['types'])
@@ -27,6 +28,7 @@ def open_user_discord(app, item_values):
     ent_name = tk.Entry(add_win)
     ent_name.insert(0, default_name)
     ent_name.pack()
+    ent_name.bind("<FocusIn>", lambda event: set_korean_ime())
 
     tk.Label(add_win, text="webhook").pack(pady=5)
     ent_webhook = tk.Entry(add_win, width=50)

@@ -1,8 +1,9 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import messagebox
 import database.connection_SQL as db
 import config
 from services.ticker_search import TickerSearch
+from services.ui_helper import center_window,set_korean_ime
 
 class TickerManage:
     def __init__(self,app, item_values=None,db_id=None):
@@ -22,7 +23,7 @@ class TickerManage:
         add_win = tk.Toplevel(self.root)
         add_win.title("새 종목 추가")
         add_win.geometry("300x450")
-        self.center_window(add_win,300,450,self.root)
+        center_window(add_win,300,450,self.root)
 
         # 1. 라디오 버튼용 변수 (기본값: .KS)
         self.market_var = tk.StringVar(value=".KS")
@@ -43,34 +44,41 @@ class TickerManage:
 
         # 시장 선택 레이블 및 버튼
         tk.Label(add_win, text="시장 선택:", font=("Malgun Gothic", 9, "bold")).pack(pady=5)
-        self.radio_frame = tk.Frame(add_win)
-        self.radio_frame.pack()
+        radio_frame = tk.Frame(add_win)
+        radio_frame.pack()
 
-        tk.Radiobutton(self.radio_frame, text="코스피 (.KS)", variable=self.market_var, value=".KS").pack(side="left", padx=10)
-        tk.Radiobutton(self.radio_frame, text="코스닥 (.KQ)", variable=self.market_var, value=".KQ").pack(side="left", padx=10)
+        tk.Radiobutton(radio_frame, text="코스피 (.KS)", variable=self.market_var, value=".KS").pack(side="left", padx=10)
+        tk.Radiobutton(radio_frame, text="코스닥 (.KQ)", variable=self.market_var, value=".KQ").pack(side="left", padx=10)
+        radio_frame.pack_forget()
 
-        tk.Label(add_win, text="종목 코드 (숫자만):").pack(pady=5)
-        self.input_code = tk.Frame(add_win)
-        self.input_code.pack(pady=5)
-
-        self.ent_code = tk.Entry(self.input_code)
-        self.ent_code.insert(0, default_code)
-        self.ent_code.pack(side=tk.LEFT, padx=5)
-
+        search_frame = tk.Frame(add_win)
 
         # 돋보기 버튼 (이미지가 있다면 image 옵션 사용, 없으면 텍스트로)
 
-        tk.Label(add_win, text="종목명:").pack(pady=5)
+        tk.Label(search_frame, text="종목명:").pack(side='left',pady=5)
+
+        search_frame.pack(pady=5)
+
         self.ent_name = tk.Entry(add_win)
         self.ent_name.insert(0, default_name)
-        self.ent_name.pack()
+        self.ent_name.pack(padx=5)
+        self.ent_name.bind("<FocusIn>", lambda event: set_korean_ime())
+        self.ent_name.bind("<Return>", lambda e: self.open_search_window())
+
+        btn_search = tk.Button(search_frame, text="검색", command=lambda: self.open_search_window())
+        btn_search.pack(side="left")  # Entry 바로 오른쪽 배치
+
+        tk.Label(add_win, text="종목 코드 (숫자만):").pack(pady=5)
+        self.ent_code = tk.Entry(add_win)
+        self.ent_code.insert(0, default_code)
+        self.ent_code.pack(padx=5)
+        self.ent_code.bind("<FocusIn>", lambda event: set_korean_ime())
+
 
         # 실시간으로 표시될 라벨
         self.label_display = tk.Label(add_win, text="목표가: 0원", fg="blue")
         self.label_display.pack(pady=5)
 
-        btn_search = tk.Button(self.input_code, text="검색", command=lambda: self.open_search_window(self.ent_code.get().strip()))
-        btn_search.pack(side="left")  # Entry 바로 오른쪽 배치
 
         # 3. Entry 생성 시 textvariable 연결
         ent_price = tk.Entry(add_win, textvariable=self.price_var)
@@ -105,7 +113,7 @@ class TickerManage:
             else:
                 db.insert_ticker_to_db(config.CUR_USER_ID, full_code, name, price)
 
-            self.app.root.refresh_tree()
+            self.app.refresh_tree()
             add_win.destroy()  # 저장이 완료된 직후에만 여기서 닫습니다.
 
         tk.Button(add_win, text="저장", command=save_new_ticker, width=15, bg="#e1f5fe").pack(pady=25)
@@ -118,23 +126,9 @@ class TickerManage:
             else:
                 return messagebox.askyesno(title, message, parent=add_win)
 
-    def center_window(self, window, width, height, parent):
-        # parent가 None이면 화면 정중앙
-        if parent is None:
-            screen_width = window.winfo_screenwidth()
-            screen_height = window.winfo_screenheight()
-            x = (screen_width // 2) - (width // 2)
-            y = (screen_height // 2) - (height // 2)
-        else:
-            x = parent.winfo_x() + (parent.winfo_width() // 2) - (width // 2)
-            y = parent.winfo_y() + (parent.winfo_height() // 2) - (height // 2)
-
-        window.geometry(f"{width}x{height}+{x}+{y}")
-
-    def open_search_window(self,default_search):
+    def open_search_window(self,event=None):
+        default_search = self.ent_code.get().strip()
         TickerSearch(self, default_search)
-
-
 
     # 2. 변수가 변할 때 실행될 함수
     def update_display(self,*args):

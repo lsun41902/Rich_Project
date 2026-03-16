@@ -31,6 +31,9 @@ def check_and_update_db():
 
     conn.close()
 
+def need_update(last_date):
+    pass
+
 def init_db_from_csv():
     try:
         with get_connection() as conn:
@@ -90,14 +93,9 @@ def get_connection():
     # 3. 사용할 실제 DB 경로
     db_path = os.path.join(app_data_path, DB_NAME)
 
-    # 4. DB 파일이 없으면(첫 실행 시), 내장된 초기 DB를 복사해옴
-    if not os.path.exists(db_path):
-        # 실행 파일 안에 포함된 템플릿 DB 경로 (resource_path 사용)
-        template_db = resource_path("rich_db")
-        if os.path.exists(template_db):
-            shutil.copy(template_db, db_path)
-    # 5. 이제 항상 내장 파일이 아닌 '유저 개인 폴더'의 파일을 연결함
-    return sqlite3.connect(db_path)
+    # DB 연결 (없으면 생성됨)
+    conn = sqlite3.connect(db_path)
+    return conn
 
 def setup_database():
     try:
