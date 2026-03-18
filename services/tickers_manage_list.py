@@ -1,9 +1,6 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
-import database.connection_SQL as db
-import config
-from services.ticker_manage import TickerManage
-from services.ui_helper import center_window, show_message_box
+from tkinter import ttk
+import services.ui_helper as helper
 
 class TickersManageList:
     def __init__(self,app):
@@ -15,7 +12,7 @@ class TickersManageList:
     def init_ui(self):
         self.manager_ui = tk.Toplevel(self.root)
         self.manager_ui.title("종목 관리")
-        center_window(self.manager_ui, 700, 500, self.root)
+        helper.center_window(self.manager_ui, 700, 500, self.root)
 
         # --- 1. 상단 레이아웃 ---
         self.header_frame = tk.Frame(self.manager_ui)
@@ -79,6 +76,9 @@ class TickersManageList:
 
     # --- 3. 데이터 로드 함수 (하나로 통합) ---
     def refresh_tree(self):
+        import database.connection_SQL as db
+        import config
+
         for item in self.tree.get_children():
             self.tree.delete(item)
 
@@ -100,15 +100,18 @@ class TickersManageList:
 
     # [-] 삭제 로직
     def delete_item(self):
+        import database.connection_SQL as db
+
         selected = self.tree.selection()
         if not selected: return
 
         db_id = selected[0]  # 선택된 행의 iid가 곧 db_id
 
-        if show_message_box("삭제 확인", "선택한 종목을 삭제할까요?", mtype=0):
+        if helper.show_message_box("삭제 확인", "선택한 종목을 삭제할까요?", mtype=0):
             db.delete_ticker_to_db(db_id)  # ID로 삭제
             self.refresh_tree()
 
 
     def add_item_window(self,item_values=None,db_id=None):
+        from services.ticker_manage import TickerManage
         TickerManage(self,item_values,db_id)

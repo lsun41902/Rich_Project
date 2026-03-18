@@ -78,7 +78,6 @@ def pull_request_stock(code):
         # 넉넉한 기간으로 조회
         # 라디오 버튼 값에 따라 소스 접두어 설정
         ticker = code.split('.')
-        print(ticker)
         if selected == 0:  # Naver
             symbol = f"NAVER:{ticker[0]}"
         elif selected == 1:  # KRX
@@ -95,3 +94,95 @@ def pull_request_stock(code):
         return 0
     except Exception as e:
         print(f"업데이트 오류: {e}")
+
+
+def volume_formatter(x, pos):
+    """숫자 크기에 따라 단위를 붙여주는 함수"""
+    if x >= 1e9:   # 10억 이상
+        return f'{x*1e-9:,.1f}B'
+    elif x >= 1e6: # 100만 이상
+        return f'{x*1e-6:,.1f}M'
+    elif x >= 1e3: # 1,000 이상
+        return f'{x*1e-3:,.0f}K'
+    else:
+        return f'{x:,.0f}'
+
+def date_formatter(date):
+    # 1. 문자열을 날짜 객체로 변환 (Parse)
+    dt_obj = datetime.strptime(str(date), "%Y%m%d")
+
+    # 2. 원하는 형식의 문자열로 변환 (Format)
+    return dt_obj.strftime("%Y/%m/%d")
+
+
+from cryptography.fernet import Fernet
+import base64
+import hashlib
+import subprocess
+
+def get_crypto_key():
+    """
+    사용자 PC의 고유 UUID를 읽어와서 32바이트 암호화 열쇠를 생성합니다.
+    열쇠를 별도로 저장할 필요가 없어서 매우 안전합니다.
+    """
+    try:
+        # 윈도우 전용: 메인보드 고유 UUID 추출
+        cmd = 'wmic csproduct get uuid'
+        uuid = subprocess.check_output(cmd, shell=True).decode().split('\n')[1].strip()
+    except:
+        # 만약 실패할 경우를 대비한 백업 (컴퓨터 이름 사용)
+        import platform
+        uuid = platform.node()
+
+    # UUID를 SHA256으로 해싱하여 32바이트 규격 생성
+    key_hash = hashlib.sha256(uuid.encode()).digest()
+    # Fernet 규격(Base64)으로 변환
+    return base64.urlsafe_b64encode(key_hash)
+
+def encrypt_key(raw_api_key):
+    """DB 저장 전 호출: 평문 -> 암호문"""
+    if not raw_api_key: return ""
+    f = Fernet(get_crypto_key())
+    return f.encrypt(raw_api_key.encode()).decode()
+
+def decrypt_key(encrypted_api_key):
+    """DB 로드 후 호출: 암호문 -> 평문"""
+    if not encrypted_api_key: return ""
+    try:
+        f = Fernet(get_crypto_key())
+        return f.decrypt(encrypted_api_key.encode()).decode()
+    except:
+        # 복호화 실패 시(이미 평문이거나 기기가 바뀐 경우) 원본 반환
+        return encrypted_api_key
+
+
+import tkinter as tk
+from tkinter import ttk
+
+
+class LoadingWindow:
+    def __init__(self, parent, message="과거 60일의 주가와 거래량을\n근거로 향후 5일 예측 중..."):
+        self.window = tk.Toplevel(parent)
+        self.window.title("분석")
+        self.window.geometry("300x100")
+
+        # 메인 창 중앙에 배치
+        x = parent.winfo_x() + (parent.winfo_width() // 2) - 150
+        y = parent.winfo_y() + (parent.winfo_height() // 2) - 50
+        self.window.geometry(f"+{x}+{y}")
+
+        # 창 닫기 버튼 무효화 (작업 중 강제 종료 방지)
+        self.window.protocol("WM_DELETE_WINDOW", lambda: None)
+        self.window.attributes("-topmost", True)  # 항상 위에
+
+        label = tk.Label(self.window, text=message)
+        label.pack(pady=10)
+
+        # 결정되지 않은(Indeterminate) 모드의 프로그레스바
+        self.progress = ttk.Progressbar(self.window, mode='indeterminate', length=200)
+        self.progress.pack(pady=5)
+        self.progress.start(10)  # 10ms 간격으로 움직임
+
+    def stop(self):
+        self.progress.stop()
+        self.window.destroy()

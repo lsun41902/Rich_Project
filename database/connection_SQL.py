@@ -2,8 +2,8 @@ import os
 import sqlite3
 import config
 import sys
-import shutil
 import pandas as pd
+import services.ui_helper as helper
 
 DB_NAME = "rich_db.sqlite"
 CSV_PATH = "data/data_0322_20260313.csv" # 배포 시 resource_path로 감싸야 함
@@ -99,24 +99,76 @@ def get_connection():
 
 def setup_database():
     try:
-        current_ver = get_db_ver()
+        user_db_ver = get_db_ver()
 
-        cur_db_ver = 1
+        cur_db_ver = 2
 
-        if current_ver == 0:
+        if user_db_ver == 0:
             run_sql_file("sqlver_1.sql")
-            update_version_record(1)
-        elif current_ver < cur_db_ver:
-            run_sql_file("sqlver_3.sql")
             update_version_record(cur_db_ver)
-        if (init_db_from_csv()):
+        elif user_db_ver < cur_db_ver:
+            ver_2()
+            update_version_record(cur_db_ver)
+
+        if init_db_from_csv():
             create_index_default_ticker()
+
         current_user = get_user_id()
         get_user_ticker_list(current_user)
         set_user_webhook()
         print_ok("모든 DB 설정이 완료되었습니다.")
     except Exception as e:
         print_error(f"setup 오류 발생: {e}")
+
+def update_user_table():
+    msg =["""
+                                   CREATE TABLE users_new
+                                   (
+                                       id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                                       user_name   VARCHAR(50) NOT NULL,
+                                       webhook     TEXT      DEFAULT '',
+                                       genai_key   TEXT      DEFAULT '',
+                                       types       INTEGER   DEFAULT 0,
+                                       is_active   BOOLEAN   DEFAULT TRUE,
+                                       market_type INTEGER   DEFAULT 0,
+                                       recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                                   )
+                                   """,
+          """
+          INSERT INTO users_new (id, user_name, webhook, types, is_active, market_type, recorded_at)
+          SELECT id, user_name, webhook, types, is_active, market_type, recorded_at
+          FROM users
+          """
+          ]
+    return msg
+
+def ver_2():
+    migrate_user_table("users","genai_key","users_new")
+
+def migrate_user_table(check_table,check_columns,new_table):
+    try:
+        with get_connection() as conn:
+            with conn:
+                cursor = conn.cursor()
+                # 1. 현재 테이블에 genai_key가 있는지 확인
+                cursor.execute(f"PRAGMA table_info({check_table})")
+                columns = [col[1] for col in cursor.fetchall()]
+
+                if check_columns not in columns:
+                    print("🔄 구버전 테이블 감지: 구조 재편성 시작...")
+
+                    # 임시 테이블 생성 (원하는 순서대로)
+                    create_query, insert_query = update_user_table()
+                    cursor.execute(create_query)
+                    cursor.execute(insert_query)
+
+                    # 기존 테이블 삭제 및 새 테이블 이름 변경
+                    cursor.execute(f"DROP TABLE {check_table}")
+                    cursor.execute(f"ALTER TABLE {new_table} RENAME TO {check_table}")
+
+                    print("✅ 테이블 구조 업데이트 완료 (recorded_at 맨 뒤 고정)")
+    except Exception as e:
+        print_error(f"DB 연결 실패:{e}")
 
 def get_default_ticker_list():
     try:
@@ -181,14 +233,16 @@ def set_user_webhook():
     except Exception as e:
         print_error(f"사용자 webhook 가져외 실패: {e}")
 
-def update_user_webhook(user_id, name, webhook, types, is_active, market_type):
+def update_user_webhook(user_id, name, webhook, types, is_active, market_type, genai_key):
+    en_key = helper.encrypt_key(genai_key)
+
     try:
         with get_connection() as conn:
             with conn:
                 cur = conn.cursor()
-                cur.execute("UPDATE users SET user_name = ?, webhook = ?, types = ?, is_active = ?, market_type = ? WHERE id = ?",(name, webhook, types, is_active,market_type, user_id))
+                cur.execute("UPDATE users SET user_name = ?, webhook = ?, types = ?, is_active = ?, market_type = ?, genai_key =? WHERE id = ?",(name, webhook, types, is_active, market_type, en_key, user_id))
                 cur.close()
-                new_dict = [user_id, name, webhook, types, is_active, market_type]
+                new_dict = [user_id, name, webhook, genai_key, types, is_active, market_type]
                 config.set_webhook(new_dict)
                 return True
     except Exception as e:
@@ -247,7 +301,10 @@ def update_version_record(new_ver):
         with get_connection() as conn:
             with conn:
                 cur = conn.cursor()
-                cur.execute("INSERT OR REPLACE INTO db_ver (ver) VALUES (?)", (new_ver,))
+                cur.execute("DELETE FROM db_ver")
+
+                # 2. 새로운 버전 하나만 딱 넣습니다.
+                cur.execute("INSERT INTO db_ver (ver) VALUES (?)", (new_ver,))
                 cur.close()
     except Exception as e:
         print_error(f"버전 정보 얻기 실패: {e}")
@@ -344,8 +401,8 @@ def execute_many_transactions(query, data_list):
         print_error(f"execute_many_transactions SQL 실행 실패:{e}")
 
 def print_error(msg):
-    print(f"❌ {msg}")
+    print(f"[OK] {msg}")
 
 def print_ok(msg):
-    print(f"✅ {msg}")
+    print(f"[ERROR] {msg}")
 

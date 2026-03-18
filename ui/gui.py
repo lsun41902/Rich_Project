@@ -1,23 +1,18 @@
 import tkinter as tk
 from tkinter import ttk
-import threading
 import config
-from datetime import datetime, timedelta
-import pytz
-from services.tickers_manage_list import TickersManageList
-from services.user_manage import open_user_discord
-from services.ticker_detail import CandleCart
-from services.ui_helper import center_window, check_stock_open_close_time, pull_request_stock
-import FinanceDataReader as fdr
-import database.connection_SQL as db
 
 
 # --- [GUI 클래스] ---
 class StockApp:
     def __init__(self, root, watchlist):  # main에서 watchlist를 받아옴
+        import database.connection_SQL as db
+        import services.ui_helper as helper
+        import threading
+
         self.root = root
         self.root.title("주가 모니터 & 알리미")
-        center_window(self.root, 700, 550, None)
+        helper.center_window(self.root, 700, 550, None)
 
         self.timer_id = None
         self.ui_update_id = None
@@ -89,6 +84,7 @@ class StockApp:
         selected_item = self.tree.focus()
         if not selected_item:
             return
+        from services.ticker_detail import CandleCart
 
         # 2. 인덱스 번호 추출
         idx = self.tree.index(selected_item)
@@ -102,8 +98,6 @@ class StockApp:
         item_data = self.tree.item(selected_item)
         ticker_name = item_data['values'][0]  # 트리뷰 첫 번째 컬럼값
 
-        print(f"인덱스 {idx} - 상세 그래프 종목: {ticker_name}")
-
         ticker_code = ticker_info[0]
         stock_data = self.stock_info.get(ticker_code)
 
@@ -114,13 +108,17 @@ class StockApp:
         CandleCart(self, item_data)
 
     def open_user_manage(self):
-        open_user_discord(self, config.MY_INFO)
+        from services.user_manage import UserManage
+        UserManage(self, config.MY_INFO)
 
     def get_time(self):
         self.cur_time.config(text=f"⏰ 현재 시각: {self.get_current_hour_kr()}", fg="black")
         self.timer_id = self.root.after(1000, self.get_time)
 
     def get_current_hour_kr(self):
+        import pytz
+        from datetime import datetime
+
         # 1. 한국 시간대 설정
         tz_kr = pytz.timezone('Asia/Seoul')
 
@@ -134,6 +132,7 @@ class StockApp:
         return formatted_time
 
     def update_ui_loop(self):
+        from datetime import datetime
         now = datetime.now()
         # 만약 이미 예약된 작업이 있다면 취소 (중복 실행 방지)
         if self.ui_update_id is not None:
@@ -205,6 +204,7 @@ class StockApp:
         self.update_ui_loop()
 
     def open_user_mgmt(self):  # 이름을 살짝 바꿔주면 더 명확합니다.
+        from services.tickers_manage_list import TickersManageList
         TickersManageList(self)
 
     def on_select(self, event):
@@ -227,7 +227,9 @@ class StockApp:
         self.manual_refresh()
 
     def data_market(self):
-        if check_stock_open_close_time():
+        import services.ui_helper as helper
+
+        if helper.check_stock_open_close_time():
             selected = self.cur_market.get()
             while selected == 0:
                 self.get_request()
@@ -239,10 +241,12 @@ class StockApp:
             self.get_request()
 
     def get_request(self):
+        import services.ui_helper as helper
+
         try:
             for info in self.watchlist.values():
                 code, name, target = info
-                df = pull_request_stock(code)
+                df = helper.pull_request_stock(code)
                 self.stock_info[code]['price'] = df['Close'].iloc[-1]
                 if self.stock_info[code]['open'] == 0:
                     price_pykrx = df['Open'].iloc[-1]
@@ -250,4 +254,6 @@ class StockApp:
         except Exception as e:
             print(f"오류 발생: {e}")
         self.update_ui_loop()
+
+
 

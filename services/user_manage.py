@@ -1,63 +1,83 @@
 import tkinter as tk
-from tkinter import messagebox
-import database.connection_SQL as db
-from services.ui_helper import center_window,set_korean_ime
+import services.ui_helper as helper
 
+class UserManage:
+    def __init__(self,app,item_values):
+        self.app = app
+        self.root = app.root
+        self.data_list = item_values[0]
 
-def open_user_discord(app, item_values):
-    data_list = item_values[0]
-    add_win = tk.Toplevel(app.root)
-    add_win.title("유저 관리")
-    center_window(add_win, 500,350, app.root)
+        self.open_user_discord()
 
-    # 1. 라디오 버튼용 변수 (기본값: .KS)
-    market_var = tk.IntVar(value=data_list['types'])
-    active_var = tk.BooleanVar(value=data_list['is_active'])
+    def open_user_discord(self):
+        self.add_win = tk.Toplevel(self.root)
+        self.add_win.title("유저 관리")
+        helper.center_window(self.add_win, 500,350, self.root)
 
-    default_name = data_list['name']
-    default_webhook = data_list['webhook']
+        # 1. 라디오 버튼용 변수 (기본값: .KS)
+        self.alert_var = tk.IntVar(value=self.data_list['types'])
+        self.active_var = tk.BooleanVar(value=self.data_list['is_active'])
 
-    # 시장 선택 레이블 및 버튼
-    radio_frame = tk.Frame(add_win)
-    radio_frame.pack()
+        default_name = self.data_list['name']
+        default_webhook = self.data_list['webhook']
+        default_genai_key = self.data_list['genai_key']
 
-    tk.Radiobutton(radio_frame, text="디스코드", variable=market_var, value=0).pack(side="left", padx=10)
+        # 시장 선택 레이블 및 버튼
+        radio_frame = tk.Frame(self.add_win)
+        radio_frame.pack(side="top")
 
-    # 2. 기존 입력 필드들
-    tk.Label(add_win, text="사용자").pack(pady=5)
-    ent_name = tk.Entry(add_win)
-    ent_name.insert(0, default_name)
-    ent_name.pack()
-    ent_name.bind("<FocusIn>", lambda event: set_korean_ime())
+        alert_type = tk.Radiobutton(radio_frame, text="디스코드", variable=self.alert_var, value=0)
+        alert_type.pack(side="left", padx=10)
+        alert_type.pack_forget()
 
-    tk.Label(add_win, text="webhook").pack(pady=5)
-    ent_webhook = tk.Entry(add_win, width=50)
-    ent_webhook.insert(0, default_webhook)
-    ent_webhook.pack()
+        # 2. 기존 입력 필드들
+        tk.Label(self.add_win, text="사용자").pack(pady=5)
+        self.ent_name = tk.Entry(self.add_win)
+        self.ent_name.insert(0, default_name)
+        self.ent_name.pack()
+        self.ent_name.bind("<FocusIn>", lambda event: helper.set_korean_ime())
 
-    chk_active = tk.Checkbutton(add_win, text="알림 활성화", variable=active_var)
-    chk_active.pack(pady=10)
+        alert_frame = tk.Frame(self.add_win)
+        alert_frame.pack()
 
-    # 3. 저장 로직 수정
-    def save_new_ticker():
-        name = ent_name.get().strip()
-        webhook = ent_webhook.get().strip()
-        types = market_var.get()
-        is_active = active_var.get()  # True 또는 False 반환
-        market_type = data_list['market_type']
+        tk.Label(alert_frame, text="webhook").pack(pady=5,side='left')
+        chk_active = tk.Checkbutton(alert_frame, text="알림 활성화", variable=self.active_var)
+        chk_active.pack(pady=10,side='right')
 
+        self.ent_webhook = tk.Entry(self.add_win, width=50)
+        self.ent_webhook.insert(0, default_webhook)
+        self.ent_webhook.pack()
+
+        model_key_frame = tk.Frame(self.add_win)
+        model_key_frame.pack()
+        tk.Label(model_key_frame, text="GENAI API KEY").pack(pady=5,side='left')
+        tk.Button(model_key_frame,text="신청",command=self.show_genai_key_webpage).pack(pady=5,side='right')
+
+        self.ent_model_key = tk.Entry(self.add_win, width=50)
+        self.ent_model_key.insert(0, default_genai_key)
+        self.ent_model_key.pack()
+
+        tk.Button(self.add_win, text="저장", command=self.save_new_ticker, width=15, bg="#e1f5fe").pack(pady=25)
+
+    def show_genai_key_webpage(self):
+        import webbrowser
+        try:
+            url = "https://aistudio.google.com/prompts/new_chat?hl=ko"
+            webbrowser.open_new_tab(url)  # 새 탭에서 열기
+        except Exception as e:
+            print(f"웹페이지를 열 수 없습니다: {e}")
+
+    def save_new_ticker(self):
+        import database.connection_SQL as db
+        name = self.ent_name.get().strip()
+        webhook = self.ent_webhook.get().strip()
+        types = self.alert_var.get()
+        is_active = self.active_var.get()  # True 또는 False 반환
+        market_type = self.data_list['market_type']
+        genai_key = self.ent_model_key.get().strip()
         if name and webhook:
-            db.update_user_webhook(0, name, webhook, types, is_active, market_type)
-            add_win.destroy()
+            db.update_user_webhook(0, name, webhook, types, is_active, market_type,genai_key)
+            self.add_win.destroy()
         else:
-            show_message_box("경고", "모든 정보를 입력해주세요.", type=1)
+            helper.show_message_box("경고", "모든 정보를 입력해주세요.", mtype=1)
 
-    def show_message_box(title, message, type=0):
-        if type == 0:
-            return messagebox.askyesno(title, message, parent=add_win)
-        elif type == 1:
-            return messagebox.showwarning(title, message, parent=add_win)
-        else:
-            return messagebox.askyesno(title, message, parent=add_win)
-
-    tk.Button(add_win, text="저장", command=save_new_ticker, width=15, bg="#e1f5fe").pack(pady=25)

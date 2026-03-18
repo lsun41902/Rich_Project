@@ -1,6 +1,5 @@
 import tkinter as tk
-import database.connection_SQL as db
-from services.ui_helper import center_window, set_korean_ime
+import services.ui_helper as helper
 
 
 class TickerSearch:
@@ -14,7 +13,7 @@ class TickerSearch:
         self.results = []
         self.search_win = tk.Toplevel()
         self.search_win.title("주식 검색")
-        center_window(self.search_win, 300, 300, self.app.root)
+        helper.center_window(self.search_win, 300, 300, self.app.root)
 
         # 검색 입력창
         self.search_var = tk.StringVar()
@@ -34,7 +33,7 @@ class TickerSearch:
         # 입력창 내용이 바뀔 때마다 update_list 실행
         self.ent_search.bind("<KeyRelease>", self.update_list)
         self.ent_search.bind("<Return>", self.perform_search)
-        self.ent_search.bind("<FocusIn>", lambda e: set_korean_ime())
+        self.ent_search.bind("<FocusIn>", lambda e: helper.set_korean_ime())
 
         self.perform_search()  # 시작하자마자 전체 리스트 보여주기
 
@@ -55,6 +54,8 @@ class TickerSearch:
         self.search_timer = self.search_win.after(300, self.perform_search)
 
     def perform_search(self, event=None):
+        import database.connection_SQL as db
+
         search_term = self.ent_search.get()
         self.results = db.get_like_default_ticker_list(search_term)
 

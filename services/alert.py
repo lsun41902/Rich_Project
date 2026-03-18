@@ -1,17 +1,18 @@
 import time
 from datetime import datetime
-import yfinance as yf
 import config
+import services.ui_helper as helper
 
 # 전역 캐시 (필요시 사용)
 current_prices_cache = {}
 
+
 def get_stock_data(ticker):
     try:
-        stock = yf.Ticker(ticker)
-        return stock.fast_info.last_price
+        df = helper.pull_request_stock(ticker)
+        return df
     except Exception as e:
-        print(f"⚠️ 가격 가져오기 실패({ticker}): {e}")
+        print(f"⚠️ 가격 추출 실패({ticker}): {e}")
         return None
 
 
@@ -35,41 +36,45 @@ def alert_worker(send_message_func):
     while True:
         now = datetime.now()
 
-        if config.MY_INFO[0]['is_active']:
+        if config.MY_INFO[0].get('is_active', False):
             for info in config.WATCHLIST.values():
                 code, name, target = info
-                current = get_stock_data(code)
+                df = get_stock_data(code)
 
-                if current is None: continue
+                # 데이터가 제대로 들어왔는지 확인
+                if df is not None and not df.empty:
+                    try:
+                        current_val = float(df['Close'].iloc[-1])
 
-                # 1. 데이터 업데이트
-                current_prices_cache[code] = current
-                unit = "원" if any(ex in code for ex in [".KS", ".KQ"]) else "$"
-                current_val = float(current)
-                target_val = float(target)
+                        # ⭐ 1. 데이터 업데이트 (코드가 아니라 가격을 저장!)
+                        current_prices_cache[code] = current_val
 
-                # 2. 목표가 도달 체크 (돌파 알림)
-                if current_val >= target_val:
-                    if code not in already_alerted:
-                        msg = f"🚀 **목표가 달성!**\n종목: {name}({code})\n현재가: **{int(float(current)):,}{unit}** (목표: {int(float(target)):,}{unit})"
-                        send_message_func(msg)
-                        already_alerted.add(code)
-                        print(f"🔔 알림 발송: {name}")
+                        unit = "원" if any(ex in code for ex in [".KS", ".KQ"]) else "$"
+                        target_val = float(target)
+
+                        # 2. 목표가 도달 체크
+                        if current_val >= target_val:
+                            if code not in already_alerted:
+                                msg = f"🚀 **목표가 달성!**\n종목: {name}({code})\n현재가: **{int(current_val):,}{unit}** (목표: {int(target_val):,}{unit})"
+                                send_message_func(msg)
+                                already_alerted.add(code)
+                                print(f"🔔 알림 발송: {name}")
+                        else:
+                            if code in already_alerted:
+                                already_alerted.remove(code)
+
+                    except Exception as e:
+                        print(f"⚠️ 가격 계산 오류({code}): {e}")
                 else:
-                    # 목표가 아래로 내려가면 알림 리스트에서 제거 (재진입 시 다시 알림)
-                    if code in already_alerted:
-                        already_alerted.remove(code)
-
-            # 3. 정기 보고 로직 (시간 조건)
-            # 장 시작 보고 (09:00)
-            if now.hour == 9 and now.minute == 0 and 0 <= now.second < 25:
+                    print(f"📡 데이터를 가져올 수 없음: {name}({code})")
+            current_time_str = now.strftime("%H:%M")
+            # 3. 정기 보고 로직
+            if current_time_str == "09:00":
                 send_stock_report("오전 장 시작 보고", config.WATCHLIST, send_message_func)
-                time.sleep(30)  # 중복 발송 방지
+                time.sleep(31)
 
-            # 장 마감 보고 (15:15)
-            elif now.hour == 15 and now.minute == 20 and 0 <= now.second < 25:
+            elif current_time_str == "15:20":
                 send_stock_report("오후 장 마감 보고", config.WATCHLIST, send_message_func)
-                time.sleep(30)
+                time.sleep(31)
 
-        # 20초 주기 검사
-        time.sleep(30)
+        time.sleep(30)  # 30초 주기

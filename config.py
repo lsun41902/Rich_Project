@@ -1,3 +1,4 @@
+
 # --- 설정 ---
 WEBHOOK_URLS = ['',]
 MY_INFO = {
@@ -6,7 +7,8 @@ MY_INFO = {
         'webhook': '',
         'types': 0,
         'is_active': True,
-        'market_type': 0
+        'market_type': 0,
+        'genai_key':''
     }
 }
 
@@ -20,7 +22,7 @@ WATCHLIST = {
 }
 
 # 상수 정의
-TEN, FIVE, ONE = 10, 5, 1
+TEN, FIVE, ONE = 60, 45, 30
 
 CUR_USER_ID = 0
 
@@ -29,13 +31,17 @@ def set_watch_list(watch_list):
     WATCHLIST = watch_list
 
 def set_webhook(result):
+    import services.ui_helper as helper
+    encrypted_key = result[3]
+    decrypted_key = helper.decrypt_key(encrypted_key)
     new_dict = {
         result[0]: {
             "name": result[1],
             "webhook": result[2],
-            "types": result[3],
-            "is_active": result[4],
-            "market_type": result[5]
+            "genai_key": decrypted_key,
+            "types": result[4],
+            "is_active": result[5],
+            "market_type": result[6],
         }
     }
     global MY_INFO
