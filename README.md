@@ -38,3 +38,13 @@ API 키 암호화: 사용자의 API Key(GenAI 등)를 OS 고유 식별자 기반
 | **Visualization** | Matplotlib, mplfinance |
 | **AI/LLM** | Google Gemini API (Generative AI) |
 | **Data** | Open DART API, FinanceDataReader |
+
+#### Icons
+* **통계 아이콘**: [Freepik - Flaticon](https://www.flaticon.com/kr/free-icons/statistics)
+* **설정 아이콘**: [Tempo_doloe - Flaticon](https://www.flaticon.com/kr/free-icons/settings)
+* **돈 아이콘**: [Smashicons - Flaticon](https://www.flaticon.com/kr/free-icons/money)
+
+#### Open Source Libraries
+* [mplfinance](https://github.com/matplotlib/mplfinance) - 차트 시각화
+* [FinanceDataReader](https://github.com/FinanceData/FinanceDataReader) - 금융 데이터 수집
+* [Google Generative AI](https://ai.google.dev/) - 공시 분석 및 요약
