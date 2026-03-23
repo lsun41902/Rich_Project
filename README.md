@@ -39,6 +39,7 @@ API 키 암호화: 사용자의 API Key(GenAI 등)를 OS 고유 식별자 기반
 | **AI/LLM** | Google Gemini API (Generative AI) |
 | **Data** | Open DART API, FinanceDataReader |
 
+---
 #### Icons
 * **통계 아이콘**: [Freepik - Flaticon](https://www.flaticon.com/kr/free-icons/statistics)
 * **설정 아이콘**: [Tempo_doloe - Flaticon](https://www.flaticon.com/kr/free-icons/settings)
