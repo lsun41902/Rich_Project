@@ -29,12 +29,13 @@ def main():
     import threading
     import tkinter as tk
     from database.connection_SQL import setup_database
-    from ui.gui import StockApp
+    from ui.main_gui import StockApp
     from services.alert import alert_worker
     import config  # config.py 불러오기
+    import services.ui_helper as helper
 
     setup_database()
-
+    helper.set_icons()
     # alert_worker에 설정값 전달
     alert_thread = threading.Thread(
         target=alert_worker,
@@ -44,6 +45,7 @@ def main():
     alert_thread.start()
 
     root = tk.Tk()
+
     # GUI에도 설정값 전달
     app = StockApp(root, config.WATCHLIST)
 

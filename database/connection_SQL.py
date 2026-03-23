@@ -401,8 +401,8 @@ def execute_many_transactions(query, data_list):
         print_error(f"execute_many_transactions SQL 실행 실패:{e}")
 
 def print_error(msg):
-    print(f"[OK] {msg}")
+    print(f"[ERROR] {msg}")
 
 def print_ok(msg):
-    print(f"[ERROR] {msg}")
+    print(f"[OK] {msg}")
 

@@ -12,10 +12,10 @@ def center_window(window, width, height, parent):
     window.geometry(f"{width}x{height}+{x}+{y}")
 
 
-import ctypes
-import pyautogui
-
 def set_korean_ime():
+    import ctypes
+    from ctypes import wintypes
+    import pyautogui
     # 1. 현재 포커스된 창의 핸들 가져오기
     hwnd = ctypes.windll.user32.GetForegroundWindow()
     # 2. 입력기 컨텍스트(IMC) 가져오기
@@ -38,30 +38,31 @@ def set_korean_ime():
         # 5. 컨텍스트 해제 (메모리 관리)
         ctypes.windll.imm32.ImmReleaseContext(hwnd, himc)
 
-from tkinter import messagebox
 
+def show_message_box(parent, title, msg, mtype=0):
+    from tkinter import messagebox
 
-def show_message_box(self, title, message, mtype=0):
     if mtype == 0:
-        return messagebox.askyesno(title, message, parent=self.header_frame)
+        return messagebox.askyesno(title, msg, parent=parent)
     elif mtype == 1:
-        return messagebox.showwarning(title, message, parent=self.header_frame)
+        return messagebox.showwarning(title, msg, parent=parent)
     else:
-        return messagebox.askyesno(title, message, parent=self.header_frame)
+        return messagebox.askyesno(title, msg, parent=parent)
 
-from datetime import datetime, timedelta
+
 def check_stock_open_close_time():
+    from datetime import datetime, timedelta
     now = datetime.now()
     if (now.hour == 9 and now.minute >= 0) or (9 < now.hour < 15) or (now.hour == 15 and now.minute <= 20):
         return True
     else:
         return False
 
-
-import FinanceDataReader as fdr
-import config
-
 def pull_request_stock(code):
+    from datetime import datetime, timedelta
+    import FinanceDataReader as fdr
+    import config
+
     try:
         default_code, suffix = code.split('.')
 
@@ -96,18 +97,37 @@ def pull_request_stock(code):
         print(f"업데이트 오류: {e}")
 
 
+def pull_request_stock_NASDAQ():
+    import FinanceDataReader as fdr
+    # 1. 나스닥(NASDAQ) 종목 리스트
+    df_nasdaq = fdr.StockListing('S&P500')
+    import pandas as pd
+    # 1. 컬럼 너비 제한 해제 (내용이 길어도 다 보여줌)
+    pd.set_option('display.max_colwidth', None)
+
+    # 2. 보여줄 최대 컬럼 수 설정 (컬럼이 많아도 안 잘림)
+    pd.set_option('display.max_columns', None)
+
+    # 3. 출력 화면 너비 설정 (한 줄에 길게 나오도록)
+    pd.set_option('display.width', 1000)
+
+    print(df_nasdaq[['Symbol', 'Name', 'Sector', 'Industry']].head(20))
+
+
 def volume_formatter(x, pos):
     """숫자 크기에 따라 단위를 붙여주는 함수"""
-    if x >= 1e9:   # 10억 이상
-        return f'{x*1e-9:,.1f}B'
-    elif x >= 1e6: # 100만 이상
-        return f'{x*1e-6:,.1f}M'
-    elif x >= 1e3: # 1,000 이상
-        return f'{x*1e-3:,.0f}K'
+    if x >= 1e9:  # 10억 이상
+        return f'{x * 1e-9:,.1f}B'
+    elif x >= 1e6:  # 100만 이상
+        return f'{x * 1e-6:,.1f}M'
+    elif x >= 1e3:  # 1,000 이상
+        return f'{x * 1e-3:,.0f}K'
     else:
         return f'{x:,.0f}'
 
+
 def date_formatter(date):
+    from datetime import datetime, timedelta
     # 1. 문자열을 날짜 객체로 변환 (Parse)
     dt_obj = datetime.strptime(str(date), "%Y%m%d")
 
@@ -115,38 +135,45 @@ def date_formatter(date):
     return dt_obj.strftime("%Y/%m/%d")
 
 
-from cryptography.fernet import Fernet
-import base64
-import hashlib
-import subprocess
-
 def get_crypto_key():
-    """
-    사용자 PC의 고유 UUID를 읽어와서 32바이트 암호화 열쇠를 생성합니다.
-    열쇠를 별도로 저장할 필요가 없어서 매우 안전합니다.
-    """
+    import base64
+    import hashlib
+    import subprocess
+    import platform
+    os_type = platform.system()
+    unique_id = ""
     try:
-        # 윈도우 전용: 메인보드 고유 UUID 추출
-        cmd = 'wmic csproduct get uuid'
-        uuid = subprocess.check_output(cmd, shell=True).decode().split('\n')[1].strip()
+        if os_type == "Windows":
+            # 윈도우: 메인보드 UUID
+            cmd = 'wmic csproduct get uuid'
+            unique_id = subprocess.check_output(cmd, shell=True).decode().split('\n')[1].strip()
+        elif os_type == "Darwin":  # Mac OS
+            # Mac: 하드웨어 UUID 추출 명령어
+            cmd = "ioreg -rd1 -c IOPlatformExpertDevice | grep -E '(UUID)'"
+            output = subprocess.check_output(cmd, shell=True).decode()
+            unique_id = output.split('"')[-2]
+        else:
+            unique_id = platform.node()  # 기타 (Linux 등)
     except:
-        # 만약 실패할 경우를 대비한 백업 (컴퓨터 이름 사용)
-        import platform
-        uuid = platform.node()
+        unique_id = platform.node()
 
     # UUID를 SHA256으로 해싱하여 32바이트 규격 생성
-    key_hash = hashlib.sha256(uuid.encode()).digest()
+    key_hash = hashlib.sha256(unique_id.encode()).digest()
     # Fernet 규격(Base64)으로 변환
     return base64.urlsafe_b64encode(key_hash)
 
+
 def encrypt_key(raw_api_key):
-    """DB 저장 전 호출: 평문 -> 암호문"""
+    # os키를 이용해 암호화 하기
+    from cryptography.fernet import Fernet
     if not raw_api_key: return ""
     f = Fernet(get_crypto_key())
     return f.encrypt(raw_api_key.encode()).decode()
 
+
 def decrypt_key(encrypted_api_key):
-    """DB 로드 후 호출: 암호문 -> 평문"""
+    # os키를 이용해 복호화 하기
+    from cryptography.fernet import Fernet
     if not encrypted_api_key: return ""
     try:
         f = Fernet(get_crypto_key())
@@ -156,12 +183,12 @@ def decrypt_key(encrypted_api_key):
         return encrypted_api_key
 
 
-import tkinter as tk
-from tkinter import ttk
-
-
 class LoadingWindow:
+
     def __init__(self, parent, message="과거 60일의 주가와 거래량을\n근거로 향후 5일 예측 중..."):
+
+        import tkinter as tk
+        from tkinter import ttk
         self.window = tk.Toplevel(parent)
         self.window.title("분석")
         self.window.geometry("300x100")
@@ -184,5 +211,42 @@ class LoadingWindow:
         self.progress.start(10)  # 10ms 간격으로 움직임
 
     def stop(self):
-        self.progress.stop()
-        self.window.destroy()
+        try:
+            # 1. 프로그레스 바가 메모리에 있고, 실제 화면상에도 존재하는지 확인
+            if hasattr(self, 'progress') and self.progress.winfo_exists():
+                self.progress.stop()
+
+            # 2. 로딩 창(Toplevel)이 실제로 존재하는지 확인 후 닫기
+            if hasattr(self, 'window') and self.window.winfo_exists():
+                self.window.destroy()
+
+        except Exception as e:
+            pass
+
+
+MAIN_ICON_PATH = ''
+CHART_ICON_PATH = ''
+SETTING_ICON_PATH = ''
+
+
+def set_icons():
+    global MAIN_ICON_PATH, CHART_ICON_PATH, SETTING_ICON_PATH
+    import os
+    import sys
+
+    # 1. 아이콘이 들어있는 폴더와 파일명 정의
+    icon_folder = 'icons'
+    main_name = 'main.ico'
+    chart_name = 'chart.ico'
+    setting_name = 'setting.ico'
+
+    # 2. 베이스 경로 결정 (빌드 환경 vs 개발 환경)
+    if hasattr(sys, '_MEIPASS'):
+        base_path = sys._MEIPASS
+    else:
+        base_path = os.path.abspath(".")
+
+    # 3. 폴더명까지 포함하여 최종 절대 경로 생성
+    MAIN_ICON_PATH = os.path.join(base_path, icon_folder, main_name)
+    CHART_ICON_PATH = os.path.join(base_path, icon_folder, chart_name)
+    SETTING_ICON_PATH = os.path.join(base_path, icon_folder, setting_name)

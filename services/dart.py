@@ -1,7 +1,6 @@
 import os
 import datetime
 import re
-import sklearn
 
 class Dart_Info():
     def __init__(self):
@@ -106,11 +105,14 @@ class Dart_Info():
             return self.get_ai_summary(clean_text)
         except Exception as e:
             print(f"본문 로드 실패: {e}")
-            return "문서 읽기 실패"
+            import config
+            if not config.MY_INFO[0]['genai_key']:
+                return "구글 AI STUDIO KEY를 등록후 사용해 주세요."
+            else:
+                return "문서 읽기 실패"
 
     def get_ai_summary(self, raw_text):
-        from google import genai
-        from google.genai import types
+
         truncated_text = raw_text[:5000]
 
         prompt = f"""
@@ -136,11 +138,6 @@ class Dart_Info():
     # 3. 데이터셋 생성 (60일 보고 5일 예측)
     def create_dataset(self, dataset, look_back=60, forecast=5):
         import numpy as np
-        """
-        dataset: [Close, Volume]이 스케일링된 2차원 배열
-        look_back: 과거 60일의 추세를 봄
-        forecast: 향후 5일의 종가를 예측
-        """
         X, y = [], []
         for i in range(len(dataset) - look_back - forecast + 1):
             # 과거 60일치 (가격, 거래량) -> Feature
@@ -195,4 +192,37 @@ class Dart_Info():
         final_prediction = scaler.inverse_transform(dummy)[:, 0]
 
         return final_prediction.tolist()
+
+
+    def check_deployment_status(self):
+        status_report = []
+
+        # 2. 텐서플로 로드 및 작동 테스트
+        try:
+            import tensorflow as tf
+            status_report.append(f"🤖 TF 버전: {tf.__version__}")
+
+            # 간단한 연산 테스트 (실제 엔진 작동 확인)
+            v = tf.constant([1.0, 2.0])
+            v_sum = tf.reduce_sum(v).numpy()
+            status_report.append(f"⚡ TF 연산 테스트: {'✅ 성공' if v_sum == 3.0 else '❌ 실패'}")
+
+        except ImportError:
+            status_report.append("❌ TF 로드 실패: 라이브러리가 누락되었습니다.")
+        except Exception as e:
+            status_report.append(f"⚠️ TF 실행 오류: {str(e)[:50]}...")
+
+        # 3. 결과 메세지 박스로 출력
+        final_msg = "\n".join(status_report)
+        return final_msg
+
+    def clear_memory(self):
+        try:
+            import tensorflow as tf
+            # 1. 케라스 내부 그래프/세션 초기화
+            tf.keras.backend.clear_session()
+
+            print("✅ 메모리 정리 완료")
+        except Exception as e:
+            print(f"⚠️ 메모리 정리 중 오류: {e}")
 
