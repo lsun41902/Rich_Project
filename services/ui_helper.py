@@ -250,3 +250,35 @@ def set_icons():
     MAIN_ICON_PATH = os.path.join(base_path, icon_folder, main_name)
     CHART_ICON_PATH = os.path.join(base_path, icon_folder, chart_name)
     SETTING_ICON_PATH = os.path.join(base_path, icon_folder, setting_name)
+
+
+def send_discord_message(content):
+    import config  # config.py 불러오기
+    import requests
+
+    # config에 있는 URL 리스트 사용
+    url = config.MY_INFO[0]['webhook']
+    try:
+        payload = {"content": content}
+        requests.post(url, json=payload)
+    except Exception as e:
+        print(f"⚠️ 연결 오류: {e}")
+
+def send_stock_alim(title, msg):
+    report = f"📊 **{title}**\n"
+    message = report + msg
+    send_discord_message(message)
+    print(f"📅 보고 발송 완료: {title}")
+
+
+def get_current_usd_krw():
+    import FinanceDataReader as fdr
+    # 'USD/KRW' 심볼을 사용합니다.
+    # 최근 2일치 데이터를 가져와서 가장 마지막(최신) 행을 선택합니다.
+    df = fdr.DataReader('USD/KRW')
+
+    if not df.empty:
+        current_rate = df['Close'].iloc[-1]  # 가장 최근 종가
+        change_p = df['Close'].pct_change().iloc[-1] * 100  # 전일 대비 변동률
+        return round(current_rate, 2), round(change_p, 2)
+    return None, None

@@ -55,7 +55,8 @@ class StockApp:
         radio_frame = tk.Frame(root)
         radio_frame.pack()
         self.cur_market = tk.IntVar(value=db.get_user_market_type())
-
+        self.market_type = self.cur_market.get()
+        self.cur_market.trace_add("write",self._on_market_change)
         tk.Radiobutton(radio_frame, text="Naver", variable=self.cur_market, value=0).pack(side="left", padx=10)
         tk.Radiobutton(radio_frame, text="KRX", variable=self.cur_market, value=1).pack(side="left", padx=10)
         tk.Radiobutton(radio_frame, text="YAHOO", variable=self.cur_market, value=2).pack(side="left", padx=10)
@@ -78,10 +79,21 @@ class StockApp:
         self.root.bind("<Escape>", self.on_esc)
 
         # 데이터 수집 쓰레드 실행
+
         threading.Thread(target=self.data_market, daemon=True).start()
         self.get_time()
         # UI 갱신 루프 시작
         self.update_ui_loop()
+
+    # 4. 콜백 함수 정의 (클래스 내부에 추가)
+    def _on_market_change(self, *args):
+        # 사용자가 버튼을 누르면 이 함수가 자동으로 실행되어 값을 복사합니다.
+        self.market_type = self.cur_market.get()
+        print(f"마켓 변경 감지: {self.market_type}")
+
+        # 만약 마켓이 바뀌자마자 쓰레드를 깨우고 싶다면?
+        if hasattr(self, 'interrupt_event'):
+            self.interrupt_event.set()
 
     def on_close(self):
         os._exit(0)
@@ -237,8 +249,7 @@ class StockApp:
         import services.ui_helper as helper
 
         if helper.check_stock_open_close_time():
-            selected = self.cur_market.get()
-            while selected == 0:
+            while self.market_type == 0:
                 self.get_request()
                 # 대기 상태 (이벤트 발생 시 즉시 깨어남)
                 is_interrupted = self.interrupt_event.wait(timeout=self.update_interval)

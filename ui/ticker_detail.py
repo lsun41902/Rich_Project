@@ -135,6 +135,14 @@ class CandleCart:
         tk.Checkbutton(button_frame, text="상세 표시", variable=self.active_var, command=self.on_toggle).pack(side='right',padx=5)
         self.is_show_cur_info = True
 
+    def check_trading_signals(self, df):
+        # 1. 골든크로스 체크
+        ma5 = df['Close'].rolling(window=5).mean()
+        ma20 = df['Close'].rolling(window=20).mean()
+
+        if ma5.iloc[-2] < ma20.iloc[-2] and ma5.iloc[-1] > ma20.iloc[-1]:
+            helper.send_stock_alim("🚀 골든크로스 발생! 매수 타이밍 검토 필요.",f"{self.ticker_name} : {df['Close'].iloc[-1]}")
+
     def on_close(self):
         self.is_running = False  # 스레드에게 중단 신호를 보냄
 
@@ -469,6 +477,7 @@ class CandleCart:
                     fg=new_color
                 )
                 self.refresh_realtime_chart()
+                self.check_trading_signals(self.full_df)
         except Exception as e:
             print(f"업데이트 오류: {e}")
 
@@ -545,6 +554,7 @@ class CandleCart:
 
         # 6. 유휴 시간에 화면 갱신
         self.canvas.draw_idle()
+
 
     def calc(self, df, idx):
         close_price = df['Close'].iloc[idx]
