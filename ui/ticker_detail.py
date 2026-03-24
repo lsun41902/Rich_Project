@@ -185,16 +185,18 @@ class CandleCart:
         prev_price = self.full_df['Close'].iloc[-1]
 
         for pred_price in ai_price:
+
+            clean_price = int(pred_price)
             predict_data.append({
                 'Date': predict_dates.pop(0),
-                'Open': prev_price,
-                'High': pred_price if pred_price > prev_price else prev_price,  # 고가/저가 최소한의 형체 유지
-                'Low': prev_price if pred_price > prev_price else pred_price,
-                'Close': pred_price,
+                'Open': int(prev_price),
+                'High': clean_price if clean_price > prev_price else int(prev_price),  # 고가/저가 최소한의 형체 유지
+                'Low': int(prev_price) if clean_price > prev_price else clean_price,
+                'Close': clean_price,
                 'Change': 0,
                 'Volume': 0
             })
-            prev_price = pred_price
+            prev_price = clean_price
 
         predict_df = pd.DataFrame(predict_data).set_index('Date')
 
@@ -221,6 +223,7 @@ class CandleCart:
 
         self.canvas.draw_idle()
         if hasattr(self, 'loading'):
+            self.is_running = False
             self.loading.stop()
 
     def init_chart(self):
@@ -449,7 +452,9 @@ class CandleCart:
 
                 # 2. full_df의 마지막 봉 데이터를 실시간 가격으로 업데이트
                 # (고가/저가/종가를 현재가에 맞춰 갱신)
-                last_idx = self.full_df.index[-1]
+                ind = -6 if self.has_ai_prediction else -1
+
+                last_idx = self.full_df.index[ind]
                 self.full_df.at[last_idx, 'Close'] = realtime_price
 
                 # 실시간 고가/저가 갱신 로직 (선택사항)
@@ -479,10 +484,8 @@ class CandleCart:
         if len(self.axes) > 2:  # 거래량 차트가 있다면
             self.axes[2].clear()
 
-        if len(self.full_df) != len(self.original_df):
-            ind = -6
-        else:
-            ind = -1
+        ind = -6 if self.has_ai_prediction else -1
+
         target_v_line = len(self.full_df) + (ind + 0.2)
         current_price = float(self.full_df['Close'].iloc[ind])
 

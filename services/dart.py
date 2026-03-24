@@ -185,10 +185,16 @@ class Dart_Info():
         last_window = scaled_data[-60:].reshape(1, 60, 2)
         predicted_scaled = model.predict(last_window)  # 결과: (1, 5) 형태
 
-        # 6. 역스케일링 (가격 단위로 복원)
-        # Scaler가 2열(Close, Volume)로 학습되었으므로 형태를 맞춰줘야 함
+        # 6. 역스케일링 (수정된 버전)
         dummy = np.zeros((5, 2))
-        dummy[:, 0] = predicted_scaled[0]  # 예측된 5일치 가격을 0번 컬럼에 배치
+        dummy[:, 0] = predicted_scaled[0]  # 예측된 5일치 종가
+
+        # [핵심] 마지막 거래량(Volume) 값을 더미의 1번 컬럼에 채워줍니다.
+        # 0으로 두는 것보다 실제 마지막 거래량 값을 넣어주는 것이 훨씬 안정적입니다.
+        last_volume = scaled_data[-1, 1]
+        dummy[:, 1] = last_volume
+
+        # 역스케일링 실행
         final_prediction = scaler.inverse_transform(dummy)[:, 0]
 
         return final_prediction.tolist()
