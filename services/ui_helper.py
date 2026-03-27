@@ -96,6 +96,47 @@ def pull_request_stock(code):
     except Exception as e:
         print(f"업데이트 오류: {e}")
 
+from dto.gold_dto import GoldDTO
+def pull_request_gold(gold:GoldDTO):
+    from datetime import datetime, timedelta
+    import FinanceDataReader as fdr
+    import config
+
+    try:
+
+        # 오늘과 7일 전 날짜 설정
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=7)
+
+        # 형식 변환
+        start_str = start_date.strftime('%Y-%m-%d')
+        end_str = end_date.strftime('%Y-%m-%d')
+        gold_code = gold.code
+        gold_type = gold.type
+        # 넉넉한 기간으로 조회
+        # 라디오 버튼 값에 따라 소스 접두어 설정
+        symbol = gold_code if gold_type == 0 else f"NAVER:{gold_code}"
+        try:
+            df = fdr.DataReader(symbol, start=start_str, end=end_str)
+            if df is not None and not df.empty:
+                # 4. 단위 통일 로직 (전체 컬럼에 일괄 적용)
+                if gold_type == 0:
+                    # 국제 선물: (USD/oz * 환율 / 31.1035) -> 1g 가격 -> (* 3.75) -> 1돈 가격
+                    # ※ 주의: 과거 데이터 전체에 현재 환율을 적용하는 한계는 있음
+                    exchange_rate = gold.today_usd
+                    multiplier = (exchange_rate / 31.1035) * 3.75
+                    df[['Open', 'High', 'Low', 'Close']] = df[['Open', 'High', 'Low', 'Close']] * multiplier
+                else:
+                    # 국내 종목: (지수 * 10) -> 1g 가격 -> (* 3.75) -> 1돈 가격
+                    multiplier = 10 * 3.75
+                    df[['Open', 'High', 'Low', 'Close']] = df[['Open', 'High', 'Low', 'Close']] * multiplier
+            return df
+        except Exception as e:
+            print(f"📡 fdr 데이터 로드 오류 ({symbol}): {e}")
+        return 0
+    except Exception as e:
+        print(f"업데이트 오류: {e}")
+
 
 def pull_request_stock_NASDAQ():
     import FinanceDataReader as fdr
@@ -279,6 +320,36 @@ def get_current_usd_krw():
 
     if not df.empty:
         current_rate = df['Close'].iloc[-1]  # 가장 최근 종가
-        change_p = df['Close'].pct_change().iloc[-1] * 100  # 전일 대비 변동률
+        change_p = df['Close'].pct_change(fill_method=None).iloc[-1] * 100  # 전일 대비 변동률
         return round(current_rate, 2), round(change_p, 2)
     return None, None
+
+
+def pull_request_news(keyword):
+    import re
+    import feedparser
+    from urllib.parse import quote
+    import time
+    # 1. 한글 검색어를 URL용 암호로 변환 (금 시세 -> %EA%B8%88...)
+    encoded_query = quote(keyword)
+
+    # 2. 구글 공식 RSS 주소 조립 (rss.app 거치지 않음!)
+    url = f"https://news.google.com/rss/search?q={encoded_query}&hl=ko&gl=KR&ceid=KR:ko"
+
+    # 3. 데이터 가져오기
+    feed = feedparser.parse(url)
+    news_data = []
+
+    for entry in feed.entries[:10]:
+        # 1. HTML 태그 제거 로직 (정규표현식)
+        clean_desc = re.sub(r'<[^>]+>', '', entry.description)
+        clean_date = time.strftime('%Y-%m-%d', entry.published_parsed)
+        # 2. 데이터 구조에 추가
+        news_data.append({
+            "title": entry.title,
+            "link": entry.link,
+            "pubDate": clean_date,
+            "description": clean_desc.strip()  # 공백 제거 후 저장
+        })
+        news_data.sort(key=lambda x: x['pubDate'], reverse=True)
+    return news_data

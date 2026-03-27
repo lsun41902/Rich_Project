@@ -60,6 +60,7 @@ class Dart_Info():
         return None
 
     def get_ticker_news(self, ticker):
+        import time
         try:
             code = ticker.split('.')[0] if '.' in ticker else ticker
             corp_code = self.get_corp_code(code)
@@ -83,7 +84,8 @@ class Dart_Info():
             # 상위 10개 공시만 표시
             for i, row in disclosures.head(10).iterrows():
                 # 컬럼명이 다를 수 있으므로 안전하게 가져오기
-                date = row.get('rcept_dt', '')
+                raw_date = row.get('rcept_dt', '')
+                date = f"{raw_date[:4]}-{raw_date[4:6]}-{raw_date[6:]}"
                 title = row.get('report_nm', '')
                 rcp_no = row.get('rcept_no', '')  # 표에서 직접 꺼냄
 
@@ -133,6 +135,30 @@ class Dart_Info():
                     """
 
         response = self.client.models.generate_content(model=self.model_genai,contents=prompt,config=self.my_config)
+        return f"{response.text}"
+
+    def get_ai_news_summary(self, raw_text):
+
+        truncated_text = raw_text[:5000]
+
+        prompt = f"""
+                    당신은 경제 분석가입니다. 아래의 뉴스 원문을 읽고 투자자가 꼭 알아야 할 핵심을 요약하세요.
+
+                    [출력 형식 및 지침]
+                    1. 첫 줄은 반드시 다음 형식을 엄격히 지킬 것: ✨ AI 공시 요약 분석 결과 [평점: 호재/악재/중립 중 택1]
+                    2. 요약 내용은 3~5개의 리스트 항목으로 작성할 것.
+                    3. 전문 용어 대신 초보 투자자도 이해할 수 있는 쉬운 용어를 사용할 것.
+                    4. 각 리스트 항목은 반드시 '-'로 시작하고, 항목이 끝날 때마다 줄바꿈을 두 번(\\n\\n) 하여 가독성을 높일 것.
+                    5. 마지막에 별도의 추가 멘트나 평점을 중복해서 적지 말 것.
+
+                    [참고 사항]
+                    - 제공된 공시 원문을 최우선으로 분석하되, 해당 기업의 최근 시장 흐름과 뉴스 맥락을 반영하여 판단할 것.
+
+                    원문:
+                    {truncated_text}
+                    """
+
+        response = self.client.models.generate_content(model=self.model_genai, contents=prompt, config=self.my_config)
         return f"{response.text}"
 
     # 3. 데이터셋 생성 (60일 보고 5일 예측)

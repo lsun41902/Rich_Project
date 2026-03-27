@@ -41,6 +41,8 @@ class CandleCart:
         self.press_pixel_x = 0
         self.is_running = False
         self.dart_instance = Dart_Info()
+        self.dart_news = None
+        self.ticker_news = None
 
         self.init_ui()
         self.init_chart()  # 차트 뼈대 생성
@@ -85,10 +87,20 @@ class CandleCart:
 
         self.ai_frame = tk.Frame(self.right_frame, width=400, bg="#f0f0f0", bd=2, relief="sunken")
         self.ai_frame.pack(side="right", fill="both")
-        tk.Label(self.ai_frame, text="🤖 공시 목록 (클릭 시 상세조회)", font=("Arial", 12, "bold")).pack(pady=5)
 
-        self.ai_title = tk.Label(self.ai_frame, text="🤖 AI 뉴스 & 공시 요약", font=("Arial", 14, "bold"), bg="#f0f0f0")
-        self.ai_title.pack(pady=10)
+        header_container = tk.Frame(self.ai_frame, bg="#f0f0f0")
+        header_container.pack(fill="x",pady=10)
+        title_label = tk.Label(header_container, text="뉴스 & 공시 요약", font=("Arial", 14, "bold"), bg="#f0f0f0")
+        title_label.pack(side="left", padx=(10, 20))  # 왼쪽 여백 10, 오른쪽 버튼과의 간격 20
+
+        self.view_mode = tk.IntVar(value=0)  # 0: 공시, 1: 뉴스
+
+        tk.Radiobutton(header_container, text="공시", variable=self.view_mode, value=0,
+                       font=("Arial", 10, "bold"), bg="#f0f0f0", command=self.on_mode_change).pack(side="left")
+
+        tk.Radiobutton(header_container, text="뉴스", variable=self.view_mode, value=1,
+                       font=("Arial", 10, "bold"), bg="#f0f0f0", command=self.on_mode_change).pack(side="left")
+
 
         # [핵심] 1. Treeview로 리스트 구현
         columns = ("date", "title", "rcp_no")  # rcp_no는 숨겨둘 열
@@ -96,7 +108,7 @@ class CandleCart:
 
         # 컬럼 설정
         self.tree.heading("date", text="날짜")
-        self.tree.heading("title", text="공시 제목")
+        self.tree.heading("title", text="제목")
         self.tree.column("date", width=40, anchor="center")
         self.tree.column("title", width=270, anchor="w")
         self.tree.column("rcp_no", width=0, stretch=tk.NO)  # 접수번호는 화면에서 숨김
@@ -106,7 +118,7 @@ class CandleCart:
         # [핵심] 2. 클릭 이벤트 연결
         self.tree.bind("<Double-1>", self.on_tree_click)  # 더블 클릭 시 실행
 
-        tk.Label(self.ai_frame, text="📝 선택한 공시 요약", font=("Arial", 10, "bold")).pack(pady=5)
+        tk.Label(self.ai_frame, text="🤖📝 선택한 뉴스 & 공시 요약", font=("Arial", 10, "bold")).pack(pady=5)
 
         # 3. 상세 요약 텍스트 창
         self.ai_summary = scrolledtext.ScrolledText(self.ai_frame, wrap=tk.WORD, font=("Malgun Gothic", 10), height=15)
@@ -134,6 +146,12 @@ class CandleCart:
         self.active_var = tk.BooleanVar(value=True)
         tk.Checkbutton(button_frame, text="상세 표시", variable=self.active_var, command=self.on_toggle).pack(side='right',padx=5)
         self.is_show_cur_info = True
+
+    def on_mode_change(self):
+        # 1. 현재 선택된 값 가져오기 (1: 공시, 2: 뉴스)
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+        self.start_ai_info_loading()
 
     def check_trading_signals(self, df):
         # 1. 골든크로스 체크
@@ -304,35 +322,37 @@ class CandleCart:
         self.on_draw_chart(0)
 
     def start_ai_info_loading(self):
-        thread = threading.Thread(target=self.load_ai_data_thread, daemon=True)
-        thread.start()
+        if self.view_mode.get() == 0:
+            threading.Thread(target=self.load_ai_data_thread, daemon=True).start()
+        else :
+            threading.Thread(target=self.ticker_news_thread,daemon=True).start()
 
     def load_ai_data_thread(self):
         """실제 데이터를 가져오는 작업 (백그라운드 스레드)"""
         try:
             self.tree.insert("", "end", values=("", "DART 공시 목록 로딩중...", ""))
 
-            dart_news = self.dart_instance.get_ticker_news(self.ticker_code)
+            self.dart_news = self.dart_instance.get_ticker_news(self.ticker_code)
 
             # 데이터를 다 가져왔으면 UI 업데이트 함수 호출 (스케줄링)
             if hasattr(self, 'chart_window') and self.chart_window.winfo_exists():
-                self.chart_window.after(0, self.update_ai_ui, dart_news)
+                if self.view_mode.get() == 0:
+                    self.chart_window.after(0, self.update_ai_ui)
             else:
                 print("데이터 로드 완료 후 확인 결과: 차트 창이 이미 닫혔습니다.")
 
         except Exception as e:
             error_msg = f"데이터 로드 실패: {e}"
-            self.chart_window.after(0, self.update_ai_ui, error_msg)
 
-    def update_ai_ui(self, disclosures):
+    def update_ai_ui(self):
         for item in self.tree.get_children():
             self.tree.delete(item)
 
         # 2. 데이터가 문자열(에러 메시지 등)인 경우 처리
-        if not isinstance(disclosures, str):
+        if not hasattr(self, "dart_news") or self.dart_news is None:
             return
 
-        lines = disclosures.split('\n')
+        lines = self.dart_news.split('\n')
         current_date = ""
         current_title = ""
 
@@ -356,6 +376,40 @@ class CandleCart:
                     self.tree.insert("", "end", values=(current_date, current_title, rcp_no))
                     current_title = ""
 
+    def ticker_news_thread(self):
+        try:
+            self.tree.insert("", "end", values=("", "관련 뉴스 로딩중...", ""))
+
+            self.ticker_news = helper.pull_request_news(self.ticker_name)
+
+            # 데이터를 다 가져왔으면 UI 업데이트 함수 호출 (스케줄링)
+            if hasattr(self, 'chart_window') and self.chart_window.winfo_exists():
+                if self.view_mode.get() == 1:
+                    self.chart_window.after(0, self.update_news_ui)
+            else:
+                print("데이터 로드 완료 후 확인 결과: 차트 창이 이미 닫혔습니다.")
+
+        except Exception as e:
+            error_msg = f"데이터 로드 실패: {e}"
+
+    def update_news_ui(self):
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+
+        if not hasattr(self, "ticker_news") or not self.ticker_news:
+            return
+
+        # 2. 뉴스 리스트 순회
+        for news in self.ticker_news:
+            # news는 리스트 안의 딕셔너리입니다.
+            date = news.get('pubDate', '')
+            title = news.get('title', '')
+
+            # 데이터가 있을 때만 트리뷰에 삽입
+            if date and title:
+                # values=(첫번째칸, 두번째칸, ...) 순서대로 들어갑니다.
+                self.tree.insert("", "end", values=(date, title))
+
     def on_tree_click(self, event):
         # 1. 초기화 및 대기 메시지 표시
         self.ai_summary.config(state="normal")
@@ -366,14 +420,18 @@ class CandleCart:
         # 2. 데이터 가져오기
         try:
             selected_item = self.tree.selection()[0]
-            values = self.tree.item(selected_item, "values")
-            target_rcp_no = values[2]
-
-            # AI 요약 결과 받아오기
-            clean_text = self.dart_instance.get_detail_news(target_rcp_no)
+            if self.view_mode.get() == 0:
+                values = self.tree.item(selected_item, "values")
+                target_rcp_no = values[2]
+                result = self.dart_instance.get_detail_news(target_rcp_no)
+            else:
+                selected_item = self.tree.selection()[0]
+                index = self.tree.index(selected_item)
+                cur_news = self.ticker_news[index]
+                result = self.dart_instance.get_ai_news_summary(cur_news["description"])
 
             # 3. [핵심] UI 업데이트 함수 하나로 모든 강조 처리를 끝냅니다.
-            self.update_summary_ui(clean_text)
+            self.update_summary_ui(result)
 
         except IndexError:
             pass  # 아이템 선택이 안 된 경우 무시

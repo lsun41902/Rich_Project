@@ -60,6 +60,7 @@ class StockApp:
         tk.Radiobutton(radio_frame, text="Naver", variable=self.cur_market, value=0).pack(side="left", padx=10)
         tk.Radiobutton(radio_frame, text="KRX", variable=self.cur_market, value=1).pack(side="left", padx=10)
         tk.Radiobutton(radio_frame, text="YAHOO", variable=self.cur_market, value=2).pack(side="left", padx=10)
+        tk.Button(radio_frame,text="🏅 금 시세", command=self.show_gold_detail).pack(side="left",padx=5)
 
         # --- 표(Treeview) 설정 ---
         self.tree = ttk.Treeview(root, columns=("name", "open", "current", "target"), show="headings", height=12)
@@ -75,7 +76,7 @@ class StockApp:
         # --- 이벤트 및 쓰레드 ---
         self.interrupt_event = threading.Event()
         self.tree.bind("<<TreeviewSelect>>", self.on_select)
-        self.tree.bind("<Double-Button-1>", self.on_detail)
+        self.tree.bind("<Double-Button-1>", self.show_detail)
         self.root.bind("<Escape>", self.on_esc)
 
         # 데이터 수집 쓰레드 실행
@@ -84,6 +85,9 @@ class StockApp:
         self.get_time()
         # UI 갱신 루프 시작
         self.update_ui_loop()
+    def show_gold_detail(self):
+        from ui.ticker_gold import GoldCart
+        GoldCart(self)
 
     # 4. 콜백 함수 정의 (클래스 내부에 추가)
     def _on_market_change(self, *args):
@@ -98,7 +102,7 @@ class StockApp:
     def on_close(self):
         os._exit(0)
 
-    def on_detail(self, event):
+    def show_detail(self, event):
         # 1. 트리뷰에서 선택된 아이템의 ID 가져오기
         selected_item = self.tree.focus()
         if not selected_item:
