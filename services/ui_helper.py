@@ -226,22 +226,38 @@ def decrypt_key(encrypted_api_key):
 
 class LoadingWindow:
 
-    def __init__(self, parent, message="과거 60일의 주가와 거래량을\n근거로 향후 5일 예측 중..."):
+    def __init__(self, parent):
+        self.parent = parent
+        self.x = parent.winfo_x() + (parent.winfo_width() // 2) - 150
+        self.y = parent.winfo_y() + (parent.winfo_height() // 2) - 50
 
+    def show_message(self, message):
         import tkinter as tk
-        from tkinter import ttk
-        self.window = tk.Toplevel(parent)
+        self.window = tk.Toplevel(self.parent)
         self.window.title("분석")
-        self.window.geometry("300x100")
+        center_window(self.window, 300, 300, self.parent)
 
         # 메인 창 중앙에 배치
-        x = parent.winfo_x() + (parent.winfo_width() // 2) - 150
-        y = parent.winfo_y() + (parent.winfo_height() // 2) - 50
-        self.window.geometry(f"+{x}+{y}")
+
+        self.window.geometry(f"+{self.x}+{self.y}")
+
+        label = tk.Label(self.window, text=message)
+        label.pack(pady=10)
+
+    def show_progress(self,message="과거 60일의 주가와 거래량을\n근거로 향후 5일 예측 중..."):
+        import tkinter as tk
+        from tkinter import ttk
+        self.window = tk.Toplevel(self.parent)
+        self.window.title("분석")
+        center_window(self.window, 300, 100, self.parent)
+
+        # 메인 창 중앙에 배치
+
+        self.window.geometry(f"+{self.x}+{self.y}")
 
         # 창 닫기 버튼 무효화 (작업 중 강제 종료 방지)
         self.window.protocol("WM_DELETE_WINDOW", lambda: None)
-        self.window.attributes("-topmost", True)  # 항상 위에
+        # self.window.attributes("-topmost", True)  # 항상 위에
 
         label = tk.Label(self.window, text=message)
         label.pack(pady=10)
@@ -340,7 +356,7 @@ def pull_request_news(keyword):
     feed = feedparser.parse(url)
     news_data = []
 
-    for entry in feed.entries[:10]:
+    for entry in feed.entries[:100]:
         # 1. HTML 태그 제거 로직 (정규표현식)
         clean_desc = re.sub(r'<[^>]+>', '', entry.description)
         clean_date = time.strftime('%Y-%m-%d', entry.published_parsed)

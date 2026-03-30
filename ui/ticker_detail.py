@@ -21,11 +21,13 @@ class CandleCart:
         self.root = app.root
         self.item_data = item_data
         self.ticker_code, self.ticker_name, self.ticker_open_price = item_data[:3]
+        import services.graph_manager as graph
+        self.neo4j = graph.NewsGraphManager()
 
         font_list = fm.findSystemFonts(fontpaths=None, fontext='ttf')
         malgun_bold = [f for f in font_list if 'malgunbd' in f.lower()][0]
         self.font_prop = fm.FontProperties(fname="C:/Windows/Fonts/malgun.ttf", size=10)  # 폰트 속성 생성
-
+        self.loading = helper.LoadingWindow(self.root)
         self.font_prop_bold = fm.FontProperties(fname=malgun_bold, size=10)  # 폰트 속성 생성
 
         self.original_df = self.get_date_range()  # 2년치 원본 데이터 저장
@@ -103,8 +105,13 @@ class CandleCart:
 
 
         # [핵심] 1. Treeview로 리스트 구현
+        tree_container = tk.Frame(self.ai_frame)
+        tree_container.pack(fill="both", expand=True, padx=10, pady=5)
         columns = ("date", "title", "rcp_no")  # rcp_no는 숨겨둘 열
-        self.tree = ttk.Treeview(self.ai_frame, columns=columns, show="headings", height=12)
+        scrollbar_y = tk.Scrollbar(tree_container, orient="vertical")
+        scrollbar_y.pack(side="right", fill="y")
+        self.tree = ttk.Treeview(tree_container, columns=columns, show="headings", height=12,yscrollcommand=scrollbar_y.set)
+        scrollbar_y.config(command=self.tree.yview)
 
         # 컬럼 설정
         self.tree.heading("date", text="날짜")
@@ -113,23 +120,18 @@ class CandleCart:
         self.tree.column("title", width=270, anchor="w")
         self.tree.column("rcp_no", width=0, stretch=tk.NO)  # 접수번호는 화면에서 숨김
 
-        self.tree.pack(padx=10, pady=5, fill="x")
+        self.tree.pack(side="left", fill="both", expand=True)
 
         # [핵심] 2. 클릭 이벤트 연결
         self.tree.bind("<Double-1>", self.on_tree_click)  # 더블 클릭 시 실행
 
         tk.Label(self.ai_frame, text="🤖📝 선택한 뉴스 & 공시 요약", font=("Arial", 10, "bold")).pack(pady=5)
 
+        aigent_container = tk.Frame(self.ai_frame)
+        aigent_container.pack(fill="both", expand=True)
         # 3. 상세 요약 텍스트 창
-        self.ai_summary = scrolledtext.ScrolledText(self.ai_frame, wrap=tk.WORD, font=("Malgun Gothic", 10), height=15)
+        self.ai_summary = scrolledtext.ScrolledText(aigent_container, wrap=tk.WORD, font=("Malgun Gothic", 10), height=15)
         self.ai_summary.pack(padx=10, pady=10, fill="both", expand=True)
-
-        # Treeview 옆에 스크롤바 추가 예시
-        self.tree_scroll = ttk.Scrollbar(self.ai_frame, orient="vertical", command=self.tree.yview)
-        self.tree.configure(yscrollcommand=self.tree_scroll.set)
-
-        self.tree_scroll.pack(side="right", fill="y")
-        self.tree.pack(padx=10, pady=5, fill="x")
 
         # 4. 버튼 생성
         types = [("1주", 0), ("1달", 1), ("3달", 2), ("1년", 3)]
@@ -143,9 +145,41 @@ class CandleCart:
         reset_btn = tk.Button(button_frame, text="초기화", command=self.reset_chart)
         reset_btn.pack(side="left", padx=5)
 
+        self.search_var = tk.StringVar()
+        self.ent_search = tk.Entry(button_frame, textvariable=self.search_var)
+        self.ent_search.pack(side="left",pady=5)
+        self.ent_search.bind("<Return>", self.analyze_price)
+        self.ent_search.bind("<FocusIn>", lambda e: helper.set_korean_ime())
+
+
+        analyze_btn = tk.Button(button_frame, text="분석", command=self.analyze_price)
+        analyze_btn.pack(side="left", padx=5)
+
         self.active_var = tk.BooleanVar(value=True)
         tk.Checkbutton(button_frame, text="상세 표시", variable=self.active_var, command=self.on_toggle).pack(side='right',padx=5)
         self.is_show_cur_info = True
+
+    def analyze_price(self,event=None):
+        # 2. 작업 완료 후 실행될 내부 함수 정의
+        search_term = self.ent_search.get()
+        if not search_term:
+            self.loading.show_message("분석할 키워드를 입력해주세요!")
+            return
+        self.loading.show_progress(message=f"{search_term}(으)로 관련 기사가 등장 했을때\n주가 변화를 분석중...")
+        def analyze():
+            # 실제 데이터 업데이트 작업 (무거운 작업)
+            self.ticker_news_thread()
+            result = self.neo4j.analyze_keyword_impact(self.ticker_code, search_term)
+            self.root.after(0, lambda: self.finish_analysis(result))
+
+        thread = threading.Thread(target=analyze, daemon=True)
+        thread.start()
+
+    def finish_analysis(self, result):
+        # 4. 로딩창을 닫고 결과 메시지 출력 (Main Thread 실행)
+        self.stop_loading_process()
+        self.loading.show_message(result)
+
 
     def on_mode_change(self):
         # 1. 현재 선택된 값 가져오기 (1: 공시, 2: 뉴스)
@@ -195,9 +229,34 @@ class CandleCart:
         self.refresh_realtime_chart()
 
     def get_ai_price(self):
-        self.loading = helper.LoadingWindow(self.root)
+        self.loading.show_progress()
         thread = threading.Thread(target=self.request_ai_price, daemon=True)
         thread.start()
+
+    def get_default_neo4j_price(self, symbol):
+        # 1. 로딩 창 띄우기
+        self.loading.show_progress("주가 데이터를 가져오는 중 입니다..\n최초 1회만 실행 됩니다.")
+
+        # 2. 작업 완료 후 실행될 내부 함수 정의
+        def run_and_stop():
+            # 실제 데이터 업데이트 작업 (무거운 작업)
+            self.neo4j.update_stock_data_smart(symbol, self.ticker_name, self.ticker_code)
+
+            # 3. 작업이 끝나면 메인 쓰레드에게 "로딩 창 닫아!"라고 전달
+            # self.parent(메인 윈도우)의 after를 사용합니다.
+            self.root.after(0, self.stop_loading_process)
+
+        thread = threading.Thread(target=run_and_stop, daemon=True)
+        thread.start()
+        print(f"🚀 {self.ticker_name} 데이터 적재 쓰레드 시작")
+
+    def stop_loading_process(self):
+        # 로딩 창을 닫고 프로그레스바 중지
+        if hasattr(self.loading, 'window'):
+            self.loading.progress.stop()
+            self.loading.window.destroy()
+            print("✅ 주가 데이터 업데이트 완료 및 로딩창 종료")
+
 
     def request_ai_price(self):
         self.is_running = True
@@ -328,7 +387,6 @@ class CandleCart:
             threading.Thread(target=self.ticker_news_thread,daemon=True).start()
 
     def load_ai_data_thread(self):
-        """실제 데이터를 가져오는 작업 (백그라운드 스레드)"""
         try:
             self.tree.insert("", "end", values=("", "DART 공시 목록 로딩중...", ""))
 
@@ -381,7 +439,7 @@ class CandleCart:
             self.tree.insert("", "end", values=("", "관련 뉴스 로딩중...", ""))
 
             self.ticker_news = helper.pull_request_news(self.ticker_name)
-
+            self.neo4j.save_news_to_neo4j(self.ticker_news,self.ticker_code)
             # 데이터를 다 가져왔으면 UI 업데이트 함수 호출 (스케줄링)
             if hasattr(self, 'chart_window') and self.chart_window.winfo_exists():
                 if self.view_mode.get() == 1:
@@ -553,6 +611,13 @@ class CandleCart:
 
         ind = -6 if self.has_ai_prediction else -1
 
+        if ind == -6:
+            # 5. AI 구간임을 알리는 텍스트 추가 (선택 사항)
+            self.ax.text(len(self.full_df) - 3, self.full_df['Close'].iloc[ind],
+                         "AI Prediction", color='purple', fontweight='bold', ha='center')
+
+
+
         target_v_line = len(self.full_df) + (ind + 0.2)
         current_price = float(self.full_df['Close'].iloc[ind])
 
@@ -684,6 +749,7 @@ class CandleCart:
         start_str = (datetime.now() - relativedelta(years=2)).strftime('%Y-%m-%d')
         end_str = datetime.now().strftime('%Y-%m-%d')
         df = fdr.DataReader(symbol, start=start_str, end=end_str)
+        self.get_default_neo4j_price(symbol)
         return df
 
     # 휠 이벤트 연결 (이제 휠 줌도 축 범위 변경을 유발하므로 자동으로 위의 함수가 작동함)

@@ -1,0 +1,21 @@
+services:
+  neo4j:
+    image: neo4j:latest
+    container_name: rich-neo4j
+#    image: ghcr.io/neo4j/neo4j:latest
+#    container_name: rich-neo4j
+    ports:
+      - "7474:7474" # 웹 대시보드 (HTTP)
+      - "7687:7687" # 파이썬 연결용 (Bolt)
+    volumes:
+      - ./neo4j/data:/data
+      - ./neo4j/logs:/logs
+      - ./neo4j/import:/var/lib/neo4j/import
+      - ./neo4j/plugins:/plugins
+    environment:
+      # 초기 비밀번호 설정 (원하시는 걸로 바꾸세요)
+      - NEO4J_AUTH=neo4j/password1234
+      # 벡터 검색 및 자바 확장 기능을 위해 필요한 설정
+      - NEO4J_PLUGINS=["apoc"]
+      - NEO4J_dbms_security_procedures_unrestricted=apoc.*
+    restart: always

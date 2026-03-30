@@ -85,6 +85,7 @@ class StockApp:
         self.get_time()
         # UI 갱신 루프 시작
         self.update_ui_loop()
+
     def show_gold_detail(self):
         from ui.ticker_gold import GoldCart
         GoldCart(self)

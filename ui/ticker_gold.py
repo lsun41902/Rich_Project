@@ -86,9 +86,8 @@ class GoldCart:
 
         self.ai_frame = tk.Frame(self.right_frame, width=400, bg="#f0f0f0", bd=2, relief="sunken")
         self.ai_frame.pack(side="right", fill="both")
-        tk.Label(self.ai_frame, text="🤖 관련 기사 목록 (클릭 시 상세조회)", font=("Arial", 12, "bold")).pack(pady=5)
 
-        self.ai_title = tk.Label(self.ai_frame, text="🤖 관련 뉴스", font=("Arial", 14, "bold"), bg="#f0f0f0")
+        self.ai_title = tk.Label(self.ai_frame, text="관련 뉴스", font=("Arial", 14, "bold"), bg="#f0f0f0")
         self.ai_title.pack(pady=10)
 
         # [핵심] 1. Treeview로 리스트 구현
