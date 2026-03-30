@@ -8,11 +8,13 @@ build/
 
 
 # Neo4j 데이터 및 로그 (절대 올리면 안 됨)
+neo4j/
 neo4j/data/
 neo4j/logs/
 neo4j/run/
 neo4j/import/
 neo4j/metrics/
+neo4j/plugins/
 
 # 가상환경
 .venv/
