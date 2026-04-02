@@ -38,9 +38,9 @@ class TickersManageList:
         self.tree.heading("name", text="종목명", anchor="center")
         self.tree.heading("target", text="목표가", anchor="center")
 
-        self.tree.column("code", width=120, anchor="center")
-        self.tree.column("name", width=200, anchor="center")
-        self.tree.column("target", width=150, anchor="center")
+        self.tree.column("code", width=120, anchor="w")
+        self.tree.column("name", width=200, anchor="w")
+        self.tree.column("target", width=150, anchor="w")
 
         # 배치: 표는 왼쪽, 스크롤바는 오른쪽에 꽉 차게
         self.tree.pack(side="left", fill="both", expand=True)
@@ -63,7 +63,7 @@ class TickersManageList:
         self.root.wait_window(self.manager_ui)
 
         # 3. 창이 닫히면 실행 (메인 화면 새로고침)
-        self.app.manual_refresh()
+        self.app.my_list()
 
     # 1. 내부 함수로 정의 (app과 tree에 바로 접근 가능)
     def on_item_double_click(self,event):
@@ -95,7 +95,7 @@ class TickersManageList:
         for db_id, info in config.WATCHLIST.items():
             code, name, target = info
             formatted_target = f"{int(target):,}"
-            unit = "원" if any(ex in code for ex in [".KS", ".KQ"]) else "$"
+            unit = helper.data_unit(0)
 
             # 여기서 iid에 db_id를 심어줍니다
             self.tree.insert("", "end", iid=db_id, values=(code, name, formatted_target + unit))

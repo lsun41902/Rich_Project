@@ -1,9 +1,13 @@
 import tkinter as tk
-from datetime import datetime, timedelta
+from datetime import timedelta
 import services.ui_helper as helper
 from matplotlib.ticker import FuncFormatter
 import locale
 import threading
+from services.graph_manager import neo4j
+import services.KRX as krx
+import services.RSS as rss
+from services.ai_model import ai_model
 
 # 시스템에 따라 'ko_KR.UTF-8' 또는 'ko_KR'을 사용합니다.
 try:
@@ -15,14 +19,10 @@ except:
 class CandleCart:
     def __init__(self, app, item_data):
         import matplotlib.font_manager as fm
-        from services.dart import Dart_Info
 
         self.app = app
         self.root = app.root
-        self.item_data = item_data
-        self.ticker_code, self.ticker_name, self.ticker_open_price = item_data[:3]
-        import services.graph_manager as graph
-        self.neo4j = graph.NewsGraphManager()
+        self.ticker_code, self.ticker_name, self.ticker_open_price = item_data['Code'],item_data['Name'],item_data['Open']
 
         font_list = fm.findSystemFonts(fontpaths=None, fontext='ttf')
         malgun_bold = [f for f in font_list if 'malgunbd' in f.lower()][0]
@@ -30,26 +30,43 @@ class CandleCart:
         self.loading = helper.LoadingWindow(self.root)
         self.font_prop_bold = fm.FontProperties(fname=malgun_bold, size=10)  # 폰트 속성 생성
 
-        self.original_df = self.get_date_range()  # 2년치 원본 데이터 저장
-        self.full_df = self.original_df.copy()  # 현재 차트용 데이터
         # [수정] 차트 뼈대를 그릴 객체들 선언
 
         self.ax = None
         self.canvas = None
         self.is_dragging = False
         self.has_ai_prediction = False
-        self.last_mouse_idx = len(self.full_df) - 1
         self.press_data_x = 0  # 드래그 시작 시의 마우스 x좌표
         self.press_pixel_x = 0
         self.is_running = False
-        self.dart_instance = Dart_Info()
         self.dart_news = None
         self.ticker_news = None
-
         self.init_ui()
-        self.init_chart()  # 차트 뼈대 생성
-        self.update_price()
-        self.start_ai_info_loading()
+        self.loading.show_progress("DART 공시를 가져오는 중입니다...")
+        thread = threading.Thread(target=self.load_data_async, daemon=True)
+        thread.start()
+
+    def load_data_async(self):
+        from services.dart import dart
+        self.dart_instance = dart
+        self.root.after(0, self.loading.stop)
+        self.original_df = self.get_date_range()  # 2년치 원본 데이터 저장
+        self.full_df = self.original_df.copy()  # 현재 차트용 데이터
+        self.last_mouse_idx = len(self.full_df) - 1
+        self.root.after(0,self.update_ui)
+
+    def update_ui(self):
+        try:
+            # 1. 루트 윈도우가 실존하는지 먼저 확인
+            if not self.root.winfo_exists():
+                return
+
+            self.init_chart()  # 차트 뼈대 생성
+            self.update_price()
+            self.start_ai_info_loading()
+        except (tk.TclError, AttributeError, RuntimeError) as e:
+            print(e)
+
 
     def init_ui(self):
         from tkinter import ttk
@@ -57,7 +74,7 @@ class CandleCart:
 
         # 1. 새 창 설정
         self.chart_window = tk.Toplevel(self.root)
-        self.chart_window.title(f"{self.item_data[1]} 실시간 차트")
+        self.chart_window.title(f"{self.ticker_name} 실시간 차트")
         self.chart_window.protocol("WM_DELETE_WINDOW", self.on_close)
         self.chart_window.iconbitmap(helper.CHART_ICON_PATH)
         helper.center_window(self.chart_window, 1200, 800, self.root)
@@ -70,7 +87,7 @@ class CandleCart:
         top_frame.grid_columnconfigure(3, weight=1)  # 오른쪽 빈 공간
 
         # 2. 종목명 레이블 (grid 사용)
-        ticker_name_label = tk.Label(top_frame, text=f"{self.item_data[1]}", font=("Arial", 14, "bold"))
+        ticker_name_label = tk.Label(top_frame, text=f"{self.ticker_name}", font=("Arial", 14, "bold"))
         ticker_name_label.grid(row=0, column=1, padx=10)
         # 3. 실시간 금액 레이블 (grid 사용)
         self.price_label = tk.Label(top_frame, text="로딩 중...", font=("Arial", 14), fg="blue")
@@ -125,7 +142,7 @@ class CandleCart:
         # [핵심] 2. 클릭 이벤트 연결
         self.tree.bind("<Double-1>", self.on_tree_click)  # 더블 클릭 시 실행
 
-        tk.Label(self.ai_frame, text="🤖📝 선택한 뉴스 & 공시 요약", font=("Arial", 10, "bold")).pack(pady=5)
+        tk.Label(self.ai_frame, text="📝 요약", font=("Arial", 10, "bold")).pack(pady=5)
 
         aigent_container = tk.Frame(self.ai_frame)
         aigent_container.pack(fill="both", expand=True)
@@ -139,46 +156,81 @@ class CandleCart:
             btn = tk.Button(button_frame, text=text, command=lambda v=val: self.on_draw_chart(v))
             btn.pack(side="left", padx=5)
 
-        ai_btn = tk.Button(button_frame, text="가격 예측", command=self.get_ai_price)
-        ai_btn.pack(side="left", padx=5)
 
-        reset_btn = tk.Button(button_frame, text="초기화", command=self.reset_chart)
-        reset_btn.pack(side="left", padx=5)
 
         self.search_var = tk.StringVar()
-        self.ent_search = tk.Entry(button_frame, textvariable=self.search_var)
+        self.hint_text = "특정 키워드 분석 하기"
+        self.ent_search = tk.Entry(header_container, textvariable=self.search_var,fg='gray')
+        self.ent_search.insert(0,self.hint_text)
         self.ent_search.pack(side="left",pady=5)
         self.ent_search.bind("<Return>", self.analyze_price)
-        self.ent_search.bind("<FocusIn>", lambda e: helper.set_korean_ime())
+        self.ent_search.bind("<FocusIn>", self.on_focus_in)
+        self.ent_search.bind("<FocusOut>", self.on_focus_out)
 
 
-        analyze_btn = tk.Button(button_frame, text="분석", command=self.analyze_price)
+        analyze_btn = tk.Button(header_container, text="검색", command=self.analyze_price)
         analyze_btn.pack(side="left", padx=5)
 
         self.active_var = tk.BooleanVar(value=True)
+        tk.Button(button_frame, text="초기화", command=self.reset_chart).pack(side="right", padx=5)
+        tk.Button(button_frame, text="📝 가격 예측", command=self.get_ai_price).pack(side="right", padx=5)
         tk.Checkbutton(button_frame, text="상세 표시", variable=self.active_var, command=self.on_toggle).pack(side='right',padx=5)
+        tk.Button(button_frame, text="진단", command=self.analyze_info).pack(side="right", padx=5)
         self.is_show_cur_info = True
 
-    def analyze_price(self,event=None):
+    def analyze_info(self):
         # 2. 작업 완료 후 실행될 내부 함수 정의
-        search_term = self.ent_search.get()
-        if not search_term:
-            self.loading.show_message("분석할 키워드를 입력해주세요!")
-            return
-        self.loading.show_progress(message=f"{search_term}(으)로 관련 기사가 등장 했을때\n주가 변화를 분석중...")
+
+        self.loading.show_progress(message=f"주가 변동 원인 분석중...")
+
         def analyze():
             # 실제 데이터 업데이트 작업 (무거운 작업)
-            self.ticker_news_thread()
-            result = self.neo4j.analyze_keyword_impact(self.ticker_code, search_term)
-            self.root.after(0, lambda: self.finish_analysis(result))
+            news_list = rss.pull_request_news(self.ticker_name,20)
+
+            result_msg = ai_model.get_ai_detail_briefing(self.ticker_name, news_list)
+
+            self.root.after(0, lambda: self.finish_analysis(self.ticker_name, f"{result_msg}"))
 
         thread = threading.Thread(target=analyze, daemon=True)
         thread.start()
 
-    def finish_analysis(self, result):
+    def on_focus_in(self,event):
+        helper.set_korean_ime()
+        if self.ent_search.get() == self.hint_text:
+            self.ent_search.delete(0, tk.END)
+            self.ent_search.config(fg='black')
+
+    def on_focus_out(self,event):
+        if not self.ent_search.get():
+            self.ent_search.insert(0, self.hint_text)
+            self.ent_search.config(fg='grey')
+
+    def analyze_price(self,event=None):
+        # 2. 작업 완료 후 실행될 내부 함수 정의
+        keyword = self.ent_search.get()
+        if not keyword:
+            self.loading.show_message("분석할 키워드를 입력해주세요!")
+            return
+        self.loading.show_progress(message=f"{keyword}(으)로 관련 기사가 등장 했을때\n주가 변화를 분석중...")
+        def analyze():
+            # 실제 데이터 업데이트 작업 (무거운 작업)
+            self.ticker_news_thread()
+            result_msg,news_links = neo4j.analyze_keyword_impact(self.ticker_code, keyword)
+            detail_news = rss.pull_news_contents(news_links)
+            if news_links:
+                result2 = ai_model.get_ai_briefing(self.ticker_name,keyword,detail_news)
+                result_msg += "\n----------------------------------------------------------------\n"
+                self.root.after(0, lambda: self.finish_analysis(keyword,f"{result_msg}{result2}"))
+            else:
+                self.root.after(0, lambda: self.finish_analysis(keyword,f"{result_msg}"))
+
+        thread = threading.Thread(target=analyze, daemon=True)
+        thread.start()
+
+    def finish_analysis(self, keyword, result):
         # 4. 로딩창을 닫고 결과 메시지 출력 (Main Thread 실행)
         self.stop_loading_process()
-        self.loading.show_message(result)
+        self.loading.show_message_scroll(keyword, result)
 
 
     def on_mode_change(self):
@@ -193,7 +245,8 @@ class CandleCart:
         ma20 = df['Close'].rolling(window=20).mean()
 
         if ma5.iloc[-2] < ma20.iloc[-2] and ma5.iloc[-1] > ma20.iloc[-1]:
-            helper.send_stock_alim("🚀 골든크로스 발생! 매수 타이밍 검토 필요.",f"{self.ticker_name} : {df['Close'].iloc[-1]}")
+            import services.alert as alert
+            alert.send_stock_alim("🚀 골든크로스 발생! 매수 타이밍 검토 필요.",f"{self.ticker_name} : {df['Close'].iloc[-1]}")
 
     def on_close(self):
         self.is_running = False  # 스레드에게 중단 신호를 보냄
@@ -233,14 +286,13 @@ class CandleCart:
         thread = threading.Thread(target=self.request_ai_price, daemon=True)
         thread.start()
 
-    def get_default_neo4j_price(self, symbol):
+    def get_default_neo4j_price(self):
         # 1. 로딩 창 띄우기
-        self.loading.show_progress("주가 데이터를 가져오는 중 입니다..\n최초 1회만 실행 됩니다.")
 
         # 2. 작업 완료 후 실행될 내부 함수 정의
         def run_and_stop():
             # 실제 데이터 업데이트 작업 (무거운 작업)
-            self.neo4j.update_stock_data_smart(symbol, self.ticker_name, self.ticker_code)
+            neo4j.update_stock_data_smart(self, self.ticker_name, self.ticker_code)
 
             # 3. 작업이 끝나면 메인 쓰레드에게 "로딩 창 닫아!"라고 전달
             # self.parent(메인 윈도우)의 after를 사용합니다.
@@ -253,63 +305,65 @@ class CandleCart:
     def stop_loading_process(self):
         # 로딩 창을 닫고 프로그레스바 중지
         if hasattr(self.loading, 'window'):
-            self.loading.progress.stop()
             self.loading.window.destroy()
             print("✅ 주가 데이터 업데이트 완료 및 로딩창 종료")
 
 
     def request_ai_price(self):
-        self.is_running = True
-        import pandas as pd
-        self.full_df = self.original_df.copy()
-        ai_price = self.dart_instance.get_ai_prediction(self.full_df)
-        last_date = self.full_df.index[-1]
-        predict_dates = [last_date + timedelta(days=i) for i in range(1, 6)]
+        try:
+            self.is_running = True
+            import pandas as pd
+            self.full_df = self.original_df.copy()
+            ai_price = ai_model.get_ai_prediction(self.full_df)
+            news_list = rss.pull_request_news(self.ticker_name, 20)
+            result_msg = ai_model.get_ai_detail_briefing(self.ticker_name, news_list)
+            current_text = self.price_label.cget("text")
+            ai_detail_predict_price = ai_model.get_ai_detail_predict(self.ticker_name,news_list,result_msg,ai_price,current_text)
+            last_date = self.full_df.index[-1]
+            predict_dates = [last_date + timedelta(days=i) for i in range(1, 6)]
 
-        predict_data = []
-        prev_price = self.full_df['Close'].iloc[-1]
+            predict_data = []
+            prev_price = self.full_df['Close'].iloc[-1]
 
-        for pred_price in ai_price:
+            for pred_price in ai_detail_predict_price:
 
-            clean_price = int(pred_price)
-            predict_data.append({
-                'Date': predict_dates.pop(0),
-                'Open': int(prev_price),
-                'High': clean_price if clean_price > prev_price else int(prev_price),  # 고가/저가 최소한의 형체 유지
-                'Low': int(prev_price) if clean_price > prev_price else clean_price,
-                'Close': clean_price,
-                'Change': 0,
-                'Volume': 0
-            })
-            prev_price = clean_price
+                clean_price = int(pred_price['price'])
+                predict_data.append({
+                    'Date': predict_dates.pop(0),
+                    'Open': int(prev_price),
+                    'High': clean_price if clean_price > prev_price else int(prev_price),  # 고가/저가 최소한의 형체 유지
+                    'Low': int(prev_price) if clean_price > prev_price else clean_price,
+                    'Close': clean_price,
+                    'Change': 0,
+                    'Volume': 0,
+                    'reason':pred_price['reason']
+                })
+                prev_price = clean_price
 
-        predict_df = pd.DataFrame(predict_data).set_index('Date')
+            predict_df = pd.DataFrame(predict_data).set_index('Date')
 
-        # 3. [수정] 클래스 변수인 self.full_df를 업데이트하여 모든 기능이 이 데이터를 쓰게 함
-        # 원본을 백업해두고 싶다면 self.original_df = self.full_df.copy() 를 먼저 실행하세요.
-        self.full_df = pd.concat([self.full_df, predict_df])
-        self.has_ai_prediction = True
-        # 4. [수정] GUI 차트 갱신 함수 호출
-        # 이제 refresh_realtime_chart가 실행될 때 늘어난 self.full_df를 그리게 됩니다.
-        self.refresh_realtime_chart()
+            # 3. [수정] 클래스 변수인 self.full_df를 업데이트하여 모든 기능이 이 데이터를 쓰게 함
+            # 원본을 백업해두고 싶다면 self.original_df = self.full_df.copy() 를 먼저 실행하세요.
+            self.full_df = pd.concat([self.full_df, predict_df])
+            self.has_ai_prediction = True
+            # 4. [수정] GUI 차트 갱신 함수 호출
+            # 이제 refresh_realtime_chart가 실행될 때 늘어난 self.full_df를 그리게 됩니다.
+            self.refresh_realtime_chart()
 
-        total_len = len(self.full_df)
 
-        view_range = {0: 7, 1: 22, 2: 66, 3: 250}.get(0, total_len)
-        start_idx = max(0, total_len - view_range)
-        end_idx = total_len + 1  # 예측 데이터 끝에 약간의 여유 공간(+1)
-        self.ax.set_xlim(start_idx - 1, end_idx + 1)
 
-        # 5. AI 구간임을 알리는 텍스트 추가 (선택 사항)
-        self.ax.text(len(self.full_df) - 3, self.full_df['Close'].iloc[-6],
-                     "AI Prediction", color='purple', fontweight='bold', ha='center')
+            if not self.is_running: return
 
-        if not self.is_running: return
-
-        self.canvas.draw_idle()
-        if hasattr(self, 'loading'):
-            self.is_running = False
-            self.loading.stop()
+            self.canvas.draw_idle()
+            if hasattr(self, 'loading'):
+                self.is_running = False
+                self.loading.stop()
+        except Exception as e:
+            print(f"예측 실패: {e}")
+            if hasattr(self, 'loading'):
+                self.is_running = False
+                self.loading.stop()
+            self.loading.show_message("예측 실패, GENAI 무료버전 사용 한도 초과!")
 
     def init_chart(self):
         import mplfinance as mpf
@@ -438,8 +492,8 @@ class CandleCart:
         try:
             self.tree.insert("", "end", values=("", "관련 뉴스 로딩중...", ""))
 
-            self.ticker_news = helper.pull_request_news(self.ticker_name)
-            self.neo4j.save_news_to_neo4j(self.ticker_news,self.ticker_code)
+            self.ticker_news = rss.pull_request_news(self.ticker_name)
+            neo4j.save_news_to_neo4j(self.ticker_news,self.ticker_code)
             # 데이터를 다 가져왔으면 UI 업데이트 함수 호출 (스케줄링)
             if hasattr(self, 'chart_window') and self.chart_window.winfo_exists():
                 if self.view_mode.get() == 1:
@@ -449,6 +503,7 @@ class CandleCart:
 
         except Exception as e:
             error_msg = f"데이터 로드 실패: {e}"
+            print(error_msg)
 
     def update_news_ui(self):
         for item in self.tree.get_children():
@@ -481,12 +536,14 @@ class CandleCart:
             if self.view_mode.get() == 0:
                 values = self.tree.item(selected_item, "values")
                 target_rcp_no = values[2]
-                result = self.dart_instance.get_detail_news(target_rcp_no)
+                result = ai_model.get_ai_summary(target_rcp_no)
             else:
                 selected_item = self.tree.selection()[0]
                 index = self.tree.index(selected_item)
                 cur_news = self.ticker_news[index]
-                result = self.dart_instance.get_ai_news_summary(cur_news["description"])
+
+                result = ai_model.get_ai_news_summary(cur_news["description"])
+
 
             # 3. [핵심] UI 업데이트 함수 하나로 모든 강조 처리를 끝냅니다.
             self.update_summary_ui(result)
@@ -559,7 +616,7 @@ class CandleCart:
     def get_request(self):
         try:
             # 실시간 데이터 가져오기 (직접 만드신 함수 활용)
-            df = helper.pull_request_stock(self.ticker_code)
+            df = krx.pull_request_stock(self.ticker_code,days=5)
             if df is not None and not df.empty:
                 realtime_price = df['Close'].iloc[-1]
                 # 실시간 가격 업데이트
@@ -609,6 +666,15 @@ class CandleCart:
         if len(self.axes) > 2:  # 거래량 차트가 있다면
             self.axes[2].clear()
 
+        mpf.plot(
+            self.full_df,
+            type='candle',
+            mav=(5, 20, 60),
+            ax=self.ax,
+            volume=self.axes[2] if len(self.axes) > 2 else False,
+            style=self.s,
+        )
+
         ind = -6 if self.has_ai_prediction else -1
 
         if ind == -6:
@@ -625,34 +691,6 @@ class CandleCart:
 
         # 4. X축 범위를 복구해서 화면이 튕기지 않게 함
         self.ax.set_xlim(cur_xlim)
-
-        # 5. Y축은 현재 화면의 고가/저가에 맞게 자동 조정 (기존 함수 재활용)
-        visible_min, visible_max = self.get_visible_max_price()
-        if visible_min and visible_max:
-            self.ax.set_ylim(visible_min * 0.98, visible_max * 1.02)
-
-            # [추가] 기억해둔 마우스 위치에 커서 주석 다시 그리기
-            if self.last_mouse_idx is not None:
-                idx = self.last_mouse_idx
-                if 0 <= idx < len(self.full_df):
-                    # 주석 객체 재생성 (ax.clear로 사라졌으므로)
-                    self.cursor_annotation = self.ax.annotate("", xy=(0, 0), xytext=(15, 15),
-                                                              textcoords="offset points", color="white",
-                                                              fontweight="bold",
-                                                              bbox=dict(boxstyle="round", fc="w"),
-                                                              arrowprops=dict(arrowstyle="->"))
-
-                    info = self.calc(self.full_df, idx)
-                    self.show_current_info(idx, info)
-
-        mpf.plot(
-            self.full_df,
-            type='candle',
-            mav=(5, 20, 60),
-            ax=self.ax,
-            volume=self.axes[2] if len(self.axes) > 2 else False,
-            style=self.s,
-        )
         self.ax.set_ylabel("주가 (KRW)")
         if len(self.axes) > 2:
             vol_ax = self.axes[2]
@@ -675,20 +713,44 @@ class CandleCart:
             ymin=0, ymax=1  # 0(바닥)에서 1(천장)까지 꽉 채운다는 뜻
         )
 
+        # 5. Y축은 현재 화면의 고가/저가에 맞게 자동 조정 (기존 함수 재활용)
+        visible_min, visible_max = self.get_visible_max_price()
+        if visible_min and visible_max:
+            self.ax.set_ylim(visible_min * 0.98, visible_max * 1.02)
+
+            # [추가] 기억해둔 마우스 위치에 커서 주석 다시 그리기
+            if self.last_mouse_idx is not None:
+                idx = self.last_mouse_idx
+                if 0 <= idx < len(self.full_df):
+                    # 주석 객체 재생성 (ax.clear로 사라졌으므로)
+                    self.cursor_annotation = self.ax.annotate("", xy=(0, 0), xytext=(15, 15),
+                                                              textcoords="offset points", color="white",
+                                                              fontweight="bold",
+                                                              bbox=dict(boxstyle="round", fc="w"),
+                                                              arrowprops=dict(arrowstyle="->"))
+
+                    info = self.calc(self.full_df, idx)
+                    self.show_current_info(idx, info)
+
+
+        self.ax.yaxis.set_major_formatter(FuncFormatter(self.price_formatter))
         # 6. 유휴 시간에 화면 갱신
         self.canvas.draw_idle()
 
 
     def calc(self, df, idx):
-        close_price = df['Close'].iloc[idx]
-        open_price = df['Open'].iloc[idx]
-        high_price = df['High'].iloc[idx]
-        low_price = df['Low'].iloc[idx]
-        change = df['Change'].iloc[idx] * 100
+        row = df.iloc[idx]
+
+        close_price = row['Close']
+        open_price = row['Open']
+        high_price = row['High']
+        low_price = row['Low']
+        change = row['Change'] * 100
         cur_min, cur_max = self.ax.get_xlim()
         pos_ratio = (idx - cur_min) / (cur_max - cur_min) if (cur_max - cur_min) != 0 else 0
-        label_offset = (-100, 15) if pos_ratio > 0.75 else (15, 15)
+        label_offset = (-100, 15) if pos_ratio > 0.6 else (15, 15)
         target_y = (open_price + close_price) / 2
+        reason = row['reason'] if 'reason' in df.columns else ""
 
         diff = close_price - open_price
         if open_price != 0:
@@ -723,7 +785,8 @@ class CandleCart:
             "bg_color": bg_color,
             "text_color": text_color,
             "sep": sep,
-            "daily_change": daily_change_formatted
+            "daily_change": daily_change_formatted,
+            'reason':reason
         }
         return info
 
@@ -743,13 +806,8 @@ class CandleCart:
         self.canvas.draw_idle()
 
     def get_date_range(self):
-        import FinanceDataReader as fdr
-        from dateutil.relativedelta import relativedelta
-        symbol = f"NAVER:{self.item_data[0].split('.')[0]}"
-        start_str = (datetime.now() - relativedelta(years=2)).strftime('%Y-%m-%d')
-        end_str = datetime.now().strftime('%Y-%m-%d')
-        df = fdr.DataReader(symbol, start=start_str, end=end_str)
-        self.get_default_neo4j_price(symbol)
+        df = krx.pull_request_stock(self.ticker_code,days=730)
+        self.get_default_neo4j_price()
         return df
 
     # 휠 이벤트 연결 (이제 휠 줌도 축 범위 변경을 유발하므로 자동으로 위의 함수가 작동함)
@@ -891,8 +949,9 @@ class CandleCart:
             f"최고가     {info['high']:>10,.0f}",
             f"최저가     {info['low']:>10,.0f}",
             f"{info['sep']}",
-            f"당일 변동  {info['rate_text']:>10}",
-            f"전일 대비  {info['daily_change']:>10}"  # calc에서 만든 포맷팅 활용
+            f"금일 대비  {info['rate_text']:>10}",
+            f"전일 대비  {info['daily_change']:>10}",  # calc에서 만든 포맷팅 활용
+            f"분석 결과  {info['reason']:>10}"
         ]
         display_text = "\n".join(lines)
         if self.is_show_cur_info:

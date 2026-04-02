@@ -58,103 +58,6 @@ def check_stock_open_close_time():
     else:
         return False
 
-def pull_request_stock(code):
-    from datetime import datetime, timedelta
-    import FinanceDataReader as fdr
-    import config
-
-    try:
-        default_code, suffix = code.split('.')
-
-        selected = config.MY_INFO[0]['market_type']
-
-        # 오늘과 7일 전 날짜 설정
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=7)
-
-        # 형식 변환
-        start_str = start_date.strftime('%Y-%m-%d')
-        end_str = end_date.strftime('%Y-%m-%d')
-
-        # 넉넉한 기간으로 조회
-        # 라디오 버튼 값에 따라 소스 접두어 설정
-        ticker = code.split('.')
-        if selected == 0:  # Naver
-            symbol = f"NAVER:{ticker[0]}"
-        elif selected == 1:  # KRX
-            symbol = ticker[0]
-        elif selected == 2:  # Yahoo
-            symbol = f"YAHOO:{default_code}.{suffix}"  # 야후는 .KS 접미사 필요
-        else:
-            symbol = code
-        try:
-            df = fdr.DataReader(symbol, start=start_str, end=end_str)
-            return df
-        except Exception as e:
-            print(f"📡 fdr 데이터 로드 오류 ({symbol}): {e}")
-        return 0
-    except Exception as e:
-        print(f"업데이트 오류: {e}")
-
-from dto.gold_dto import GoldDTO
-def pull_request_gold(gold:GoldDTO):
-    from datetime import datetime, timedelta
-    import FinanceDataReader as fdr
-    import config
-
-    try:
-
-        # 오늘과 7일 전 날짜 설정
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=7)
-
-        # 형식 변환
-        start_str = start_date.strftime('%Y-%m-%d')
-        end_str = end_date.strftime('%Y-%m-%d')
-        gold_code = gold.code
-        gold_type = gold.type
-        # 넉넉한 기간으로 조회
-        # 라디오 버튼 값에 따라 소스 접두어 설정
-        symbol = gold_code if gold_type == 0 else f"NAVER:{gold_code}"
-        try:
-            df = fdr.DataReader(symbol, start=start_str, end=end_str)
-            if df is not None and not df.empty:
-                # 4. 단위 통일 로직 (전체 컬럼에 일괄 적용)
-                if gold_type == 0:
-                    # 국제 선물: (USD/oz * 환율 / 31.1035) -> 1g 가격 -> (* 3.75) -> 1돈 가격
-                    # ※ 주의: 과거 데이터 전체에 현재 환율을 적용하는 한계는 있음
-                    exchange_rate = gold.today_usd
-                    multiplier = (exchange_rate / 31.1035) * 3.75
-                    df[['Open', 'High', 'Low', 'Close']] = df[['Open', 'High', 'Low', 'Close']] * multiplier
-                else:
-                    # 국내 종목: (지수 * 10) -> 1g 가격 -> (* 3.75) -> 1돈 가격
-                    multiplier = 10 * 3.75
-                    df[['Open', 'High', 'Low', 'Close']] = df[['Open', 'High', 'Low', 'Close']] * multiplier
-            return df
-        except Exception as e:
-            print(f"📡 fdr 데이터 로드 오류 ({symbol}): {e}")
-        return 0
-    except Exception as e:
-        print(f"업데이트 오류: {e}")
-
-
-def pull_request_stock_NASDAQ():
-    import FinanceDataReader as fdr
-    # 1. 나스닥(NASDAQ) 종목 리스트
-    df_nasdaq = fdr.StockListing('S&P500')
-    import pandas as pd
-    # 1. 컬럼 너비 제한 해제 (내용이 길어도 다 보여줌)
-    pd.set_option('display.max_colwidth', None)
-
-    # 2. 보여줄 최대 컬럼 수 설정 (컬럼이 많아도 안 잘림)
-    pd.set_option('display.max_columns', None)
-
-    # 3. 출력 화면 너비 설정 (한 줄에 길게 나오도록)
-    pd.set_option('display.width', 1000)
-
-    print(df_nasdaq[['Symbol', 'Name', 'Sector', 'Industry']].head(20))
-
-
 def volume_formatter(x, pos):
     """숫자 크기에 따라 단위를 붙여주는 함수"""
     if x >= 1e9:  # 10억 이상
@@ -175,6 +78,9 @@ def date_formatter(date):
     # 2. 원하는 형식의 문자열로 변환 (Format)
     return dt_obj.strftime("%Y/%m/%d")
 
+def data_unit(stock_type):
+    unit = "원" if stock_type == 0 else "$"
+    return unit
 
 def get_crypto_key():
     import base64
@@ -237,12 +143,19 @@ class LoadingWindow:
         self.window.title("분석")
         center_window(self.window, 300, 300, self.parent)
 
-        # 메인 창 중앙에 배치
-
-        self.window.geometry(f"+{self.x}+{self.y}")
-
         label = tk.Label(self.window, text=message)
         label.pack(pady=10)
+
+    def show_message_scroll(self,title, message):
+        import tkinter as tk
+        from tkinter import scrolledtext
+        self.parent.update_idletasks()
+        self.window = tk.Toplevel(self.parent)
+        self.window.title(f"{title} 분석 결과")
+        center_window(self.window, 500, 500, self.parent)
+        s_text = scrolledtext.ScrolledText(self.window, wrap=tk.WORD, font=("Malgun Gothic", 10),height=15)
+        s_text.insert(tk.END,message)
+        s_text.pack(padx=10, pady=10, fill="both", expand=True)
 
     def show_progress(self,message="과거 60일의 주가와 거래량을\n근거로 향후 5일 예측 중..."):
         import tkinter as tk
@@ -250,10 +163,6 @@ class LoadingWindow:
         self.window = tk.Toplevel(self.parent)
         self.window.title("분석")
         center_window(self.window, 300, 100, self.parent)
-
-        # 메인 창 중앙에 배치
-
-        self.window.geometry(f"+{self.x}+{self.y}")
 
         # 창 닫기 버튼 무효화 (작업 중 강제 종료 방지)
         self.window.protocol("WM_DELETE_WINDOW", lambda: None)
@@ -307,65 +216,3 @@ def set_icons():
     MAIN_ICON_PATH = os.path.join(base_path, icon_folder, main_name)
     CHART_ICON_PATH = os.path.join(base_path, icon_folder, chart_name)
     SETTING_ICON_PATH = os.path.join(base_path, icon_folder, setting_name)
-
-
-def send_discord_message(content):
-    import config  # config.py 불러오기
-    import requests
-
-    # config에 있는 URL 리스트 사용
-    url = config.MY_INFO[0]['webhook']
-    try:
-        payload = {"content": content}
-        requests.post(url, json=payload)
-    except Exception as e:
-        print(f"⚠️ 연결 오류: {e}")
-
-def send_stock_alim(title, msg):
-    report = f"📊 **{title}**\n"
-    message = report + msg
-    send_discord_message(message)
-    print(f"📅 보고 발송 완료: {title}")
-
-
-def get_current_usd_krw():
-    import FinanceDataReader as fdr
-    # 'USD/KRW' 심볼을 사용합니다.
-    # 최근 2일치 데이터를 가져와서 가장 마지막(최신) 행을 선택합니다.
-    df = fdr.DataReader('USD/KRW')
-
-    if not df.empty:
-        current_rate = df['Close'].iloc[-1]  # 가장 최근 종가
-        change_p = df['Close'].pct_change(fill_method=None).iloc[-1] * 100  # 전일 대비 변동률
-        return round(current_rate, 2), round(change_p, 2)
-    return None, None
-
-
-def pull_request_news(keyword):
-    import re
-    import feedparser
-    from urllib.parse import quote
-    import time
-    # 1. 한글 검색어를 URL용 암호로 변환 (금 시세 -> %EA%B8%88...)
-    encoded_query = quote(keyword)
-
-    # 2. 구글 공식 RSS 주소 조립 (rss.app 거치지 않음!)
-    url = f"https://news.google.com/rss/search?q={encoded_query}&hl=ko&gl=KR&ceid=KR:ko"
-
-    # 3. 데이터 가져오기
-    feed = feedparser.parse(url)
-    news_data = []
-
-    for entry in feed.entries[:100]:
-        # 1. HTML 태그 제거 로직 (정규표현식)
-        clean_desc = re.sub(r'<[^>]+>', '', entry.description)
-        clean_date = time.strftime('%Y-%m-%d', entry.published_parsed)
-        # 2. 데이터 구조에 추가
-        news_data.append({
-            "title": entry.title,
-            "link": entry.link,
-            "pubDate": clean_date,
-            "description": clean_desc.strip()  # 공백 제거 후 저장
-        })
-        news_data.sort(key=lambda x: x['pubDate'], reverse=True)
-    return news_data

@@ -1,9 +1,11 @@
 import tkinter as tk
-from datetime import datetime, timedelta
+from datetime import datetime
 import services.ui_helper as helper
 from matplotlib.ticker import FuncFormatter
 import locale
 import threading
+import services.KRX as krx
+import services.RSS as rss
 # 시스템에 따라 'ko_KR.UTF-8' 또는 'ko_KR'을 사용합니다.
 try:
     locale.setlocale(locale.LC_TIME, 'ko_KR.UTF-8')
@@ -14,39 +16,70 @@ from dto.gold_dto import GoldDTO
 
 class GoldCart:
     def __init__(self, app):
-        from services.dart import Dart_Info
         import matplotlib.font_manager as fm
         self.app = app
         self.root = app.root
-        usd,_ = helper.get_current_usd_krw()
-        self.gold = GoldDTO(1, '132030', '1돈', usd)
         font_list = fm.findSystemFonts(fontpaths=None, fontext='ttf')
         malgun_bold = [f for f in font_list if 'malgunbd' in f.lower()][0]
         self.font_prop = fm.FontProperties(fname="C:/Windows/Fonts/malgun.ttf", size=10)  # 폰트 속성 생성
-
         self.font_prop_bold = fm.FontProperties(fname=malgun_bold, size=10)  # 폰트 속성 생성
-
-        self.original_df = self.get_date_range()  # 2년치 원본 데이터 저장
-        self.full_df = self.original_df.copy()  # 현재 차트용 데이터
-        self.gold_open_price = self.original_df["Open"].iloc[-1]
-        # [수정] 차트 뼈대를 그릴 객체들 선언
+        self.loading = helper.LoadingWindow(self.root)
 
         self.ax = None
         self.canvas = None
         self.is_dragging = False
         self.has_ai_prediction = False
-        self.last_mouse_idx = len(self.full_df) - 1
         self.press_data_x = 0  # 드래그 시작 시의 마우스 x좌표
         self.press_pixel_x = 0
         self.is_running = False
         self.news = None
-        self.dart_instance = Dart_Info()
-
-
         self.init_ui()
-        self.init_chart()  # 차트 뼈대 생성
-        self.update_price()
-        self.get_news_loading()
+        # # 4. 무거운 작업은 스레드로 시작
+        self.loading.show_progress("금의 정보를 가져오는 중 입니다...\n잠시만 기다려주세요...")
+        thread = threading.Thread(target=self.load_data_async, daemon=True)
+        thread.start()
+
+    def stop_loading_process(self):
+        # 로딩 창을 닫고 프로그레스바 중지
+        if hasattr(self.loading, 'window'):
+            self.loading.progress.stop()
+            self.loading.window.destroy()
+            print("✅ 주가 데이터 업데이트 완료 및 로딩창 종료")
+
+    def load_data_async(self):
+        """백그라운드에서 데이터를 가져오는 함수 (Worker Thread)"""
+        try:
+            # 무거운 작업들 수행
+            usd, _ = krx.pull_usd_krw()
+            self.gold = GoldDTO(1, '132030', '1돈', usd)
+            from services.dart import dart
+            self.dart_instance = dart
+            self.original_df = self.get_date_range()
+            self.full_df = self.original_df.copy()
+            self.gold_open_price = self.original_df["Open"].iloc[-1]
+            self.last_mouse_idx = len(self.full_df) - 1
+
+            # UI 업데이트는 반드시 메인 스레드에서! (Android의 runOnUiThread)
+            self.root.after(0, self.on_data_loaded)
+        except Exception as e:
+            print(f"데이터 로드 중 오류 발생: {e}")
+
+    def on_data_loaded(self):
+        """데이터 로드가 끝난 후 UI를 갱신 (Main Thread)"""
+        try:
+            # 1. 루트 윈도우가 실존하는지 먼저 확인
+            if not self.root.winfo_exists():
+                return
+            self.stop_loading_process()
+            # 2. 실제 UI 업데이트 로직 수행
+            # 이 내부에서 위젯이 파괴되어 에러가 나더라도 except에서 잡힙니다.
+            self.init_chart()
+            self.update_price()
+            self.get_news_loading()
+
+        except (tk.TclError, AttributeError, RuntimeError) as e:
+            # 창이 닫히는 도중에 발생하는 모든 UI 관련 에러를 무시합니다.
+            print(f"UI 업데이트 중단 (창이 이미 닫힘): {e}")
 
     def init_ui(self):
         from tkinter import ttk
@@ -54,7 +87,7 @@ class GoldCart:
 
         # 1. 새 창 설정
         self.chart_window = tk.Toplevel(self.root)
-        self.chart_window.title(f"{self.gold.name} 실시간 차트")
+        self.chart_window.title("금 실시간 차트")
         self.chart_window.protocol("WM_DELETE_WINDOW", self.on_close)
         self.chart_window.iconbitmap(helper.CHART_ICON_PATH)
         helper.center_window(self.chart_window, 1200, 800, self.root)
@@ -67,8 +100,8 @@ class GoldCart:
         top_frame.grid_columnconfigure(3, weight=1)  # 오른쪽 빈 공간
 
         # 2. 종목명 레이블 (grid 사용)
-        ticker_name_label = tk.Label(top_frame, text=f"{self.gold.name}", font=("Arial", 14, "bold"))
-        ticker_name_label.grid(row=0, column=1, padx=10)
+        self.ticker_name_label = tk.Label(top_frame, text="1돈", font=("Arial", 14, "bold"))
+        self.ticker_name_label.grid(row=0, column=1, padx=10)
         # 3. 실시간 금액 레이블 (grid 사용)
         self.price_label = tk.Label(top_frame, text="로딩 중...", font=("Arial", 14), fg="blue")
         self.price_label.grid(row=0, column=2, padx=10)
@@ -141,7 +174,7 @@ class GoldCart:
         try:
             self.tree.insert("", "end", values=("", "관련 뉴스 로딩중...", ""))
 
-            self.news = helper.pull_request_news("금 시세")
+            self.news = rss.pull_request_news("금 시세")
 
             # 데이터를 다 가져왔으면 UI 업데이트 함수 호출 (스케줄링)
             if hasattr(self, 'chart_window') and self.chart_window.winfo_exists():
@@ -158,7 +191,8 @@ class GoldCart:
         ma20 = df['Close'].rolling(window=20).mean()
 
         if ma5.iloc[-2] < ma20.iloc[-2] and ma5.iloc[-1] > ma20.iloc[-1]:
-            helper.send_stock_alim("🚀 골든크로스 발생! 매수 타이밍 검토 필요.",f"{self.gold.name} : {df['Close'].iloc[-1]}")
+            import services.alert as alert
+            alert.send_stock_alim("🚀 골든크로스 발생! 매수 타이밍 검토 필요.",f"{self.gold.name} : {df['Close'].iloc[-1]}")
 
     def on_close(self):
         self.is_running = False  # 스레드에게 중단 신호를 보냄
@@ -293,7 +327,8 @@ class GoldCart:
             index = self.tree.index(selected_item)
             # AI 요약 결과 받아오기
             cur_news = self.news[index]
-            result = self.dart_instance.get_ai_news_summary(cur_news["description"])
+            from services.ai_model import ai_model
+            result = ai_model.get_ai_news_summary(cur_news["description"])
 
             # 3. [핵심] UI 업데이트 함수 하나로 모든 강조 처리를 끝냅니다.
             self.update_summary_ui(result)
@@ -366,7 +401,7 @@ class GoldCart:
     def get_request(self):
         try:
             # 실시간 데이터 가져오기 (직접 만드신 함수 활용)
-            df = helper.pull_request_gold(self.gold)
+            df = krx.pull_krx_gold(self.gold,days=7)
             if df is not None and not df.empty:
                 realtime_price = df['Close'].iloc[-1]
                 # 실시간 가격 업데이트
@@ -416,6 +451,15 @@ class GoldCart:
         if len(self.axes) > 2:  # 거래량 차트가 있다면
             self.axes[2].clear()
 
+        mpf.plot(
+            self.full_df,
+            type='candle',
+            mav=(5, 20, 60),
+            ax=self.ax,
+            volume=self.axes[2] if len(self.axes) > 2 else False,
+            style=self.s,
+        )
+
         ind = -6 if self.has_ai_prediction else -1
 
         target_v_line = len(self.full_df) + (ind + 0.2)
@@ -425,6 +469,28 @@ class GoldCart:
 
         # 4. X축 범위를 복구해서 화면이 튕기지 않게 함
         self.ax.set_xlim(cur_xlim)
+        self.ax.set_ylabel("1돈 (3.75g)")
+        if len(self.axes) > 2:
+            vol_ax = self.axes[2]
+            vol_ax.set_ylabel("거래량")
+            vol_ax.yaxis.set_major_formatter(FuncFormatter(helper.volume_formatter))
+        self.ax.yaxis.set_major_formatter(FuncFormatter(self.price_formatter))
+
+        self.ax.axhline(
+            y=current_price,
+            color='black',
+            linestyle='-',
+            linewidth=1,
+            zorder=3  # 봉 차트보다 위(또는 아래)에 그릴지 결정
+        )
+
+        self.ax.axvline(
+            x=target_v_line,
+            color='black',
+            linestyle='-',
+            linewidth=1,
+            ymin=0, ymax=1  # 0(바닥)에서 1(천장)까지 꽉 채운다는 뜻
+        )
 
         # 5. Y축은 현재 화면의 고가/저가에 맞게 자동 조정 (기존 함수 재활용)
         visible_min, visible_max = self.get_visible_max_price()
@@ -445,35 +511,6 @@ class GoldCart:
                     info = self.calc(self.full_df, idx)
                     self.show_current_info(idx, info)
 
-        mpf.plot(
-            self.full_df,
-            type='candle',
-            mav=(5, 20, 60),
-            ax=self.ax,
-            volume=self.axes[2] if len(self.axes) > 2 else False,
-            style=self.s,
-        )
-        self.ax.set_ylabel("1돈 (3.75g)")
-        if len(self.axes) > 2:
-            vol_ax = self.axes[2]
-            vol_ax.set_ylabel("거래량")
-            vol_ax.yaxis.set_major_formatter(FuncFormatter(helper.volume_formatter))
-
-        self.ax.axhline(
-            y=current_price,
-            color='black',
-            linestyle='-',
-            linewidth=1,
-            zorder=3  # 봉 차트보다 위(또는 아래)에 그릴지 결정
-        )
-
-        self.ax.axvline(
-            x=target_v_line,
-            color='black',
-            linestyle='-',
-            linewidth=1,
-            ymin=0, ymax=1  # 0(바닥)에서 1(천장)까지 꽉 채운다는 뜻
-        )
 
         # 6. 유휴 시간에 화면 갱신
         self.canvas.draw_idle()
@@ -536,33 +573,14 @@ class GoldCart:
         start_idx = max(0, total_len - view_range)
         end_idx = total_len - 1
 
-        # 캔들차트의 X축은 인덱스(0, 1, 2...)이므로 인덱스로 범위를 잡습니다.
         self.ax.set_xlim(start_idx - 1, end_idx + 1)
-        visible_min, visible_max = self.get_visible_max_price()  # 직접 만드신 함수
+        visible_min, visible_max = self.get_visible_max_price()
         self.ax.set_ylim(visible_min * 0.98, visible_max * 1.02)
         self.canvas.draw_idle()
 
     def get_date_range(self):
-        import FinanceDataReader as fdr
-        from dateutil.relativedelta import relativedelta
-        code = self.gold.code
-        gold_type = self.gold.type
-        symbol = f"NAVER:{code}" if gold_type == 0 else code
-        start_str = (datetime.now() - relativedelta(years=2)).strftime('%Y-%m-%d')
-        end_str = datetime.now().strftime('%Y-%m-%d')
-        df = fdr.DataReader(symbol, start=start_str, end=end_str)
-        if df is not None and not df.empty:
-            # 4. 단위 통일 로직 (전체 컬럼에 일괄 적용)
-            if gold_type == 0:
-                # 국제 선물: (USD/oz * 환율 / 31.1035) -> 1g 가격 -> (* 3.75) -> 1돈 가격
-                # ※ 주의: 과거 데이터 전체에 현재 환율을 적용하는 한계는 있음
-                exchange_rate = self.gold.today_usd
-                multiplier = (exchange_rate / 31.1035) * 3.75
-                df[['Open', 'High', 'Low', 'Close']] = df[['Open', 'High', 'Low', 'Close']] * multiplier
-            else:
-                # 국내 종목: (지수 * 10) -> 1g 가격 -> (* 3.75) -> 1돈 가격
-                multiplier = 10 * 3.75
-                df[['Open', 'High', 'Low', 'Close']] = df[['Open', 'High', 'Low', 'Close']] * multiplier
+        # 2년치 로드
+        df = krx.pull_krx_gold(self.gold,days=730)
         return df
 
     # 휠 이벤트 연결 (이제 휠 줌도 축 범위 변경을 유발하므로 자동으로 위의 함수가 작동함)
@@ -593,17 +611,15 @@ class GoldCart:
         self.canvas.draw_idle()
 
     def get_visible_max_price(self):
-        # 기존 주석이 있다면 '물리적으로' 도화지에서 떼어내는 작업
         if hasattr(self, 'cursor_annotation_high'):
             try:
-                self.cursor_annotation_high.remove()  # 이게 핵심입니다!
+                self.cursor_annotation_high.remove()
             except:
                 pass
 
-        # 기존 주석이 있다면 '물리적으로' 도화지에서 떼어내는 작업
         if hasattr(self, 'cursor_annotation_low'):
             try:
-                self.cursor_annotation_low.remove()  # 이게 핵심입니다!
+                self.cursor_annotation_low.remove()
             except:
                 pass
 
@@ -651,14 +667,14 @@ class GoldCart:
     def on_press(self, event):
         if event.inaxes == self.ax:
             self.is_dragging = True
-            self.press_data_x = event.xdata  # 시작 지점 저장
+            self.press_data_x = event.xdata
             self.press_pixel_x = event.x
 
     def on_release(self, event):
         self.is_dragging = False
 
     def on_motion(self, event):
-        if event.inaxes != self.ax:  # 마우스가 차트 안에 있을 때만
+        if event.inaxes != self.ax:
             return
 
         if self.is_dragging:
@@ -671,7 +687,6 @@ class GoldCart:
             new_max = cur_xlim[1] + dx
 
             total_len = len(self.full_df)
-            # [수정] 오른쪽 여백을 위해 total_len에 + 10 정도를 더해줍니다.
             padding = 10
 
             if new_min < -5:  # 왼쪽으로도 약간 더 갈 수 있게 수정
@@ -704,7 +719,7 @@ class GoldCart:
             f"최고가     {info['high']:>10,.0f}",
             f"최저가     {info['low']:>10,.0f}",
             f"{info['sep']}",
-            f"당일 변동  {info['rate_text']:>10}",
+            f"금일 대비  {info['rate_text']:>10}",
             f"전일 대비  {info['daily_change']:>10}"  # calc에서 만든 포맷팅 활용
         ]
         display_text = "\n".join(lines)
