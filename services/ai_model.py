@@ -2,7 +2,6 @@ from pydantic import BaseModel
 import re
 import json
 from typing import List
-import time
 from google.api_core import exceptions
 # 1. 받을 데이터 구조 정의
 class DailyPredict(BaseModel):
@@ -36,13 +35,16 @@ class AIModel:
             from google import genai
             from google.genai import types
             self.client = genai.Client(api_key=google_api_key)
+            # for model in self.client.models.list():
+            #     print(f"정확한 모델 ID: {model.name}")
             # 모델을 미리 생성해두면 호출 속도가 빨라집니다.
             # 모델명 앞에 'models/'를 명시적으로 붙여주는 것이 가장 안전합니다.
             model_candidates = [
-                "gemini-2.5-flash-lite",
-                "gemini-2.0-flash",
-                "gemini-3-flash-preview",
-                "gemini-1.5-flash"  # 가장 보수적이고 안전한 선택지
+                "models/gemini-3.1-flash-lite-preview",  # 1순위: 찾으셨던 500회 모델 (정확한 ID)
+                "models/gemini-3-flash-preview",  # 2순위: 차세대 플래시 모델
+                "models/gemini-2.0-flash-lite",  # 3순위: 가볍고 빠른 라이트 버전
+                "models/gemini-2.5-flash-lite",  # 4순위: 아까 20회 제한 걸렸던 모델 (백업용)
+                "models/gemma-3-4b-it"  # 5순위: 하루 14,400회 가능한 무한 동력 모델
             ]
             self.my_config = types.GenerateContentConfig(
                 temperature=0.2,  # 좀 더 일관된 답변을 위해 낮게 설정
@@ -96,10 +98,7 @@ class AIModel:
             response = self.client.models.generate_content(model=self.model_genai, contents=prompt, config=self.my_config)
             return f"{response.text}"
         except exceptions.ResourceExhausted as e:
-            self.model_genai = "gemini-1.5-flash"
-            print(f"⚠️ 할당량 초과! 재시도 중... (20초 대기)")
-            time.sleep(20)  # 10초 대기 후 재시도
-            self.get_ai_summary(raw_text)
+            print(f"⚠️ 할당량 초과!")
         except Exception as e:
             print(f"AI의 뉴스 분석 오류{e}")
 
@@ -112,7 +111,7 @@ class AIModel:
                         당신은 경제 분석가입니다. 아래의 뉴스 원문을 읽고 투자자가 꼭 알아야 할 핵심을 요약하세요.
     
                         [출력 형식 및 지침]
-                        1. 첫 줄은 반드시 다음 형식을 엄격히 지킬 것: ✨ AI 공시 요약 분석 결과 [평점: 호재/악재/중립 중 택1]
+                        1. 첫 줄은 반드시 다음 형식을 엄격히 지킬 것: ✨ AI 요약 분석 결과 [평점: 호재/악재/중립 중 택1]
                         2. 요약 내용은 3~5개의 리스트 항목으로 작성할 것.
                         3. 전문 용어 대신 초보 투자자도 이해할 수 있는 쉬운 용어를 사용할 것.
                         4. 각 리스트 항목은 반드시 '-'로 시작하고, 항목이 끝날 때마다 줄바꿈을 두 번(\\n\\n) 하여 가독성을 높일 것.
@@ -128,10 +127,7 @@ class AIModel:
             response = self.client.models.generate_content(model=self.model_genai, contents=prompt, config=self.my_config)
             return f"{response.text}"
         except exceptions.ResourceExhausted as e:
-            self.model_genai = "gemini-1.5-flash"
-            print(f"⚠️ 할당량 초과! 재시도 중... (20초 대기)")
-            time.sleep(20)  # 10초 대기 후 재시도
-            self.get_ai_news_summary(raw_text)
+            print(f"⚠️ 할당량 초과!")
         except Exception as e:
             print(f"AI의 뉴스 분석 오류{e}")
 
@@ -167,16 +163,14 @@ class AIModel:
             response = self.client.models.generate_content(model=self.model_genai, contents=prompt, config=self.my_config)
             return response.text
         except exceptions.ResourceExhausted as e:
-            self.model_genai = "gemini-1.5-flash"
-            print(f"⚠️ 할당량 초과! 재시도 중... (20초 대기)")
-            time.sleep(20)  # 10초 대기 후 재시도
-            self.get_ai_briefing(ticker_name, keyword, news_list)
+            print(f"⚠️ 할당량 초과!")
         except Exception as e:
             print(f"AI의 뉴스 분석 오류{e}")
 
 
     def get_ai_detail_briefing(self,ticker_name, news_list):
         try:
+
             # news_list는 위 Cypher 쿼리 결과물
             context = "\n\n".join([f"{n['title']}" for n in news_list])
 
@@ -208,10 +202,7 @@ class AIModel:
             response = self.client.models.generate_content(model=self.model_genai, contents=prompt, config=self.my_config)
             return response.text
         except exceptions.ResourceExhausted as e:
-            self.model_genai = "gemini-1.5-flash"
-            print(f"⚠️ 할당량 초과! 재시도 중... (20초 대기)")
-            time.sleep(20)  # 10초 대기 후 재시도
-            self.get_ai_detail_briefing(ticker_name, news_list)
+            print(f"⚠️ 할당량 초과!")
         except Exception as e:
             print(f"AI의 뉴스 분석 오류{e}")
 
@@ -268,10 +259,7 @@ class AIModel:
             # 예: 5일치 가격만 리스트로 추출
             return prediction_list  # [72500, 73100, 72800, 74000, 75200] 형태
         except exceptions.ResourceExhausted as e:
-            self.model_genai = "gemini-1.5-flash"
-            print(f"⚠️ 할당량 초과! 재시도 중... (20초 대기)")
-            time.sleep(20)  # 10초 대기 후 재시도
-            self.get_ai_detail_predict(ticker_name, news_list, news_detail, predict_price, cur_price)
+            print(f"⚠️ 할당량 초과!")
         except Exception as e:
             print(f"5일치 데이터 파싱 실패: {e}")
             return []

@@ -153,7 +153,7 @@ class NewsGraphManager:
 
             if not records:
                 result_str = f"⚠️ 매칭된 데이터가 없습니다.\n*키워드: {clean_keyword}와 관련된 내용이 없습니다."
-                return result_str
+                return result_str, []
 
             total = len(records)
             rises = sum(1 for r in records if r['is_rise'] is True)

@@ -1,5 +1,6 @@
 import os
 import datetime
+from bs4 import BeautifulSoup
 
 class DartInfo:
     _instance = None
@@ -15,7 +16,7 @@ class DartInfo:
 
         from dotenv import load_dotenv
         import OpenDartReader
-
+        import dart_fss as dfss
         # 1. .env 파일의 환경 변수를 시스템으로 로드
         load_dotenv()
         # 2. os.getenv를 사용하여 키 가져오기
@@ -28,6 +29,7 @@ class DartInfo:
         if dart_api_key:
             self.dart = OpenDartReader(dart_api_key)
             self.all_corp_codes = self.dart.corp_codes
+            dfss.set_api_key(api_key=dart_api_key)
             print("✅ DART API 키가 성공적으로 로드되었습니다.")
         else:
             print("❌ API 키를 찾을 수 없습니다. .env 파일을 확인해주세요.")
@@ -37,6 +39,15 @@ class DartInfo:
         if not result.empty:
             return result.iloc[0]['corp_code']  # 8자리 고유번호 반환
         return None
+
+    def get_notice_content_clean(self, rcp_no):
+        xml_text = self.dart.document(rcp_no)  # 아까 받으신 그 XML
+
+        # BeautifulSoup으로 태그 제거
+        soup = BeautifulSoup(xml_text, 'xml')  # XML 파서 사용
+        clean_text = soup.get_text(separator="\n", strip=True)
+
+        return clean_text
 
     def get_ticker_news(self, ticker):
         try:

@@ -1,5 +1,5 @@
 import tkinter as tk
-from datetime import datetime
+from services.ai_model import ai_model
 import services.ui_helper as helper
 from matplotlib.ticker import FuncFormatter
 import locale
@@ -110,22 +110,28 @@ class GoldCart:
         button_frame = tk.Frame(self.chart_window)
         button_frame.pack(side="top", fill="x", padx=5, pady=5)
 
-        self.right_frame = tk.Frame(self.chart_window)
-        self.right_frame.pack(side="bottom", fill="both", expand=True)
+        right_frame = tk.Frame(self.chart_window)
+        right_frame.pack(side="bottom", fill="both", expand=True)
 
         # 하단 차트 영역 (이 영역을 draw_professional_chart가 사용)
-        self.chart_frame = tk.Frame(self.right_frame)
+        self.chart_frame = tk.Frame(right_frame)
         self.chart_frame.pack(side="left", fill="both", expand=True)
 
-        self.ai_frame = tk.Frame(self.right_frame, width=400, bg="#f0f0f0", bd=2, relief="sunken")
+        self.ai_frame = tk.Frame(right_frame, width=400, bg="#f0f0f0", bd=2, relief="sunken")
         self.ai_frame.pack(side="right", fill="both")
 
         self.ai_title = tk.Label(self.ai_frame, text="관련 뉴스", font=("Arial", 14, "bold"), bg="#f0f0f0")
-        self.ai_title.pack(pady=10)
+        self.ai_title.pack(pady=5)
 
         # [핵심] 1. Treeview로 리스트 구현
+        tree_container = tk.Frame(self.ai_frame)
+        tree_container.pack(fill="both", expand=True, padx=10, pady=5)
         columns = ("date", "title", "rcp_no")  # rcp_no는 숨겨둘 열
-        self.tree = ttk.Treeview(self.ai_frame, columns=columns, show="headings", height=12)
+        scrollbar_y = tk.Scrollbar(tree_container, orient="vertical")
+        scrollbar_y.pack(side="right", fill="y")
+        self.tree = ttk.Treeview(tree_container, columns=columns, show="headings", height=12,
+                                 yscrollcommand=scrollbar_y.set)
+        scrollbar_y.config(command=self.tree.yview)
 
         # 컬럼 설정
         self.tree.heading("date", text="날짜")
@@ -134,7 +140,7 @@ class GoldCart:
         self.tree.column("title", width=270, anchor="w")
         self.tree.column("rcp_no", width=0, stretch=tk.NO)  # 접수번호는 화면에서 숨김
 
-        self.tree.pack(padx=10, pady=5, fill="x")
+        self.tree.pack(side="left", fill="both", expand=True)
 
         self.tree.bind("<Double-1>", self.on_tree_click)  # 더블 클릭 시 실행
 
@@ -145,13 +151,6 @@ class GoldCart:
         self.news_summary = scrolledtext.ScrolledText(self.ai_frame, wrap=tk.WORD, font=("Malgun Gothic", 10), height=15)
         self.news_summary.pack(padx=10, pady=10, fill="both", expand=True)
 
-        # Treeview 옆에 스크롤바 추가 예시
-        self.tree_scroll = ttk.Scrollbar(self.ai_frame, orient="vertical", command=self.tree.yview)
-        self.tree.configure(yscrollcommand=self.tree_scroll.set)
-
-        self.tree_scroll.pack(side="right", fill="y")
-        self.tree.pack(padx=10, pady=5, fill="x")
-
         # 4. 버튼 생성
         types = [("1주", 0), ("1달", 1), ("3달", 2), ("1년", 3)]
         for text, val in types:
@@ -159,7 +158,7 @@ class GoldCart:
             btn.pack(side="left", padx=5)
 
         reset_btn = tk.Button(button_frame, text="초기화", command=self.reset_chart)
-        reset_btn.pack(side="left", padx=5)
+        reset_btn.pack(side="right", padx=5)
 
         self.active_var = tk.BooleanVar(value=True)
         tk.Checkbutton(button_frame, text="상세 표시", variable=self.active_var, command=self.on_toggle).pack(side='right',padx=5)
@@ -192,7 +191,8 @@ class GoldCart:
 
         if ma5.iloc[-2] < ma20.iloc[-2] and ma5.iloc[-1] > ma20.iloc[-1]:
             import services.alert as alert
-            alert.send_stock_alim("🚀 골든크로스 발생! 매수 타이밍 검토 필요.",f"{self.gold.name} : {df['Close'].iloc[-1]}")
+            unit = helper.data_unit(0)
+            alert.send_stock_alim("🚀 골든크로스 발생! 매수 타이밍 검토 필요.",f"{self.gold.name} : {int(df['Close'].iloc[-1]):,}{unit}")
 
     def on_close(self):
         self.is_running = False  # 스레드에게 중단 신호를 보냄
@@ -312,7 +312,7 @@ class GoldCart:
             # 데이터가 있을 때만 트리뷰에 삽입
             if date and title:
                 # values=(첫번째칸, 두번째칸, ...) 순서대로 들어갑니다.
-                self.tree.insert("", "end", values=(date, title))
+                self.tree.insert("", "end", values=(date.split(' ')[0], title))
 
     def on_tree_click(self, event):
         # 1. 초기화 및 대기 메시지 표시
@@ -327,8 +327,8 @@ class GoldCart:
             index = self.tree.index(selected_item)
             # AI 요약 결과 받아오기
             cur_news = self.news[index]
-            from services.ai_model import ai_model
-            result = ai_model.get_ai_news_summary(cur_news["description"])
+            target_news_content = rss.pull_news_content(cur_news)
+            result = ai_model.get_ai_news_summary(target_news_content)
 
             # 3. [핵심] UI 업데이트 함수 하나로 모든 강조 처리를 끝냅니다.
             self.update_summary_ui(result)
@@ -544,8 +544,8 @@ class GoldCart:
             bg_color = "white"  # 보합: 흰색 배경
             text_color = "black"
 
-        daily_change_formatted = f"{change :>+.2f}%"
-        rate_text = f"{change_rate :>+.2f}%"
+        daily_change_formatted = f"{change :+.2f}%"
+        rate_text = f"{change_rate :+.2f}%"
         width = 20
         sep = "-" * width
         info = {
