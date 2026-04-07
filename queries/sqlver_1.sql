@@ -16,9 +16,15 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS tickers (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
-    ticker_code VARCHAR(20) NOT NULL,
-    ticker_name VARCHAR(50) NOT NULL,
-    target_price NUMERIC(15, 2) NOT NULL,
+    ticker_code VARCHAR(20) DEFAULT '',
+    ticker_name VARCHAR(50) DEFAULT '',
+    target_price NUMERIC(15, 2) DEFAULT 0,
+    target_price_us NUMERIC(15, 2) DEFAULT 0,
+    buy_price NUMERIC(15, 2) DEFAULT 0,
+    buy_price_us NUMERIC(15, 2) DEFAULT 0,
+    amount NUMERIC(15, 2) DEFAULT 0,
+    dollar_price NUMERIC(15, 2) DEFAULT 0,
+    market_type NUMERIC(15, 2) DEFAULT 0,
     is_active BOOLEAN DEFAULT TRUE,
     recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -42,13 +48,23 @@ CREATE TABLE IF NOT EXISTS default_tickers(
     total_shares INTEGER DEFAULT 0-- 상장주식수
 );
 
+--기본 종목 테이블
+CREATE TABLE IF NOT EXISTS default_tickers_US(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,-- 번호
+    symbol TEXT UNIQUE DEFAULT '', -- 표준코드
+    name_en TEXT DEFAULT '',-- 영문 종목명
+    name_ko TEXT DEFAULT '',-- 한글 종목명
+    industry TEXT DEFAULT '', -- 산업 종류
+    market_type TEXT DEFAULT '' -- 시장 종류
+);
+
 -- 3. 버전 및 설정 테이블
 CREATE TABLE IF NOT EXISTS db_ver (
     id INTEGER PRIMARY KEY CHECK (id = 1), -- ID를 1로 고정
     ver INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS configs (cur_user_id INTEGER NOT NULL);
-CREATE TABLE IF NOT EXISTS ticker_ver (ver TEXT DEFAULT '');
+CREATE TABLE IF NOT EXISTS ticker_ver (ver TEXT DEFAULT '',us_ver TEXT DEFAULT '',);
 
 -- 초기 데이터 삽입
 INSERT INTO configs (cur_user_id) VALUES (0);

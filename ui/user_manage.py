@@ -69,7 +69,7 @@ class UserManage:
             print(f"웹페이지를 열 수 없습니다: {e}")
 
     def save_new_ticker(self):
-        import database.connection_SQL as db
+        import queries.update as update_db
         name = self.ent_name.get().strip()
         webhook = self.ent_webhook.get().strip()
         types = self.alert_var.get()
@@ -77,7 +77,7 @@ class UserManage:
         market_type = self.data_list['market_type']
         genai_key = self.ent_model_key.get().strip()
         if name and webhook:
-            db.update_user_webhook(0, name, webhook, types, is_active, market_type,genai_key)
+            update_db.update_user_webhook(0, name, webhook, types, is_active, market_type,genai_key)
             self.manage.destroy()
         else:
             helper.show_message_box(self.manage,title="경고", msg="모든 정보를 입력해주세요.", mtype=1)

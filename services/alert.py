@@ -4,11 +4,11 @@ from datetime import datetime
 def send_stock_open_close_alim(title, df):
     report = f"📊 **{title}**\n"
     for i, row in df.iterrows():
-        code, name, target = row['Code'], row['Name'], row['Target_Price']
+        code, name, target_price, target_price_us, buy_price, buy_price_us, amount, dollar_price, market_type = row['Code'], row['Name'],row['Target_Price'],row['Target_Price_US'],row['Buy_Price'],row['Buy_Price_US'],row['Amount'],row['Dollar_Price'], row['Market_Type']
         change = df['Change'].iloc[-1] * 100
         daily_change_formatted = f"{change :+.2f}%"
         price = row['Close']
-        unit = helper.data_unit(0)
+        unit = helper.data_unit(market_type)
         report += f"- {name}: {int(float(price)):,}{unit} ({daily_change_formatted})\n"
 
     __send_discord_message(report)

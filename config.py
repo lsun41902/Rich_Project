@@ -6,19 +6,19 @@ MY_INFO = {
         'name': '',
         'webhook': '',
         'types': 0,
+        'genai_key':'' ,
         'is_active': True,
-        'market_type': 0,
-        'genai_key':''
+        'market_type': 0
     }
 }
 
 # 감시 종목 및 목표가 (티커: [이름, 목표가격])
 WATCHLIST = {
-    0: ['005930.KS','삼성전자', 200000],
-    1: ['000660.KS','SK하이닉스', 1000000],
-    2: ['035720.KS','카카오', 60000],
-    3: ['086520.KQ','에코프로', 180000],
-    4: ['247540.KQ','에코프로비엠', 230000],
+    0: ['005930.KS','삼성전자', 200000,0.0,0,0.0,0,0.0,0],
+    1: ['005930.KS','삼성전자', 200000,0.0,0,0.0,0,0.0,0],
+    2: ['005930.KS','삼성전자', 200000,0.0,0,0.0,0,0.0,0],
+    3: ['005930.KS','삼성전자', 200000,0.0,0,0.0,0,0.0,0],
+    4: ['005930.KS','삼성전자', 200000,0.0,0,0.0,0,0.0,0],
 }
 
 # 상수 정의
@@ -46,6 +46,29 @@ def set_webhook(result):
     }
     global MY_INFO
     MY_INFO =  new_dict
+
+def update_webhook(user_id=None, name=None, webhook=None, genai_key=None, types=None, is_active=None, market_type=None):
+    global MY_INFO
+
+    user_id = list(MY_INFO.keys())[0] if not user_id else user_id
+    name = MY_INFO[user_id]['name'] if not name else name
+    webhook = MY_INFO[user_id]['webhook'] if not webhook else webhook
+    genai_key = MY_INFO[user_id]['genai_key'] if not genai_key else genai_key
+    types = MY_INFO[user_id]['types'] if not types else types
+    is_active = MY_INFO[user_id]['is_active'] if not is_active else is_active
+    market_type = MY_INFO[user_id]['market_type'] if not market_type else market_type
+
+    new_dict = {
+        user_id: {
+            "name": name,
+            "webhook": webhook,
+            "genai_key": genai_key,
+            "types": types,
+            "is_active": is_active,
+            "market_type": market_type,
+        }
+    }
+    MY_INFO = new_dict
 
 def get_webhook():
     global MY_INFO

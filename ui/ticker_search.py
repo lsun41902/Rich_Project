@@ -56,10 +56,11 @@ class TickerSearch:
         self.search_timer = self.search_win.after(300, self.perform_search)
 
     def perform_search(self, event=None):
-        import database.connection_SQL as db
+        import queries.select as select_db
 
         search_term = self.ent_search.get()
-        self.results = db.get_like_default_ticker_list(search_term)
+        self.results = select_db.select_like_default_ticker_list(search_term)
+        self.results += select_db.select_like_default_ticker_us_list(search_term)
 
         # 화면 업데이트
         self.listbox.delete(0, tk.END)
@@ -74,14 +75,11 @@ class TickerSearch:
 
         selection = self.results[selection_indices[0]]
         code, name, market_type = selection
-        market_type = ".KS" if "KOSPI" in market_type else ".KQ"
 
         self.app.ent_name.delete(0, tk.END)
         self.app.ent_name.insert(0, name)
 
         self.app.ent_code.delete(0, tk.END)
         self.app.ent_code.insert(0, code)
-
-        self.app.market_var.set(market_type)
-
+        self.app.on_stock_change(market_type)
         self.search_win.destroy()

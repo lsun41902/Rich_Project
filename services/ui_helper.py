@@ -157,19 +157,27 @@ class LoadingWindow:
         s_text.insert(tk.END,message)
         s_text.pack(padx=10, pady=10, fill="both", expand=True)
 
-    def show_progress(self,message="과거 60일의 주가와 거래량을\n근거로 향후 5일 예측 중..."):
+    def show_progress(self, message="과거 60일의 주가와 거래량을\n근거로 향후 5일 예측 중..."):
         import tkinter as tk
         from tkinter import ttk
+        if hasattr(self, 'window') and self.window and self.window.winfo_exists():
+            # 창이 이미 있다면 메시지만 업데이트하고 함수 종료
+            self.label.config(text=message)
+            if len(message) > 20:
+                center_window(self.window, 500, 100, self.parent)
+            else:
+                center_window(self.window, 500, 100, self.parent)
+            return
+
         self.window = tk.Toplevel(self.parent)
         self.window.title("분석")
-        center_window(self.window, 300, 100, self.parent)
+        center_window(self.window, 500, 100, self.parent)
 
         # 창 닫기 버튼 무효화 (작업 중 강제 종료 방지)
         self.window.protocol("WM_DELETE_WINDOW", lambda: None)
-        # self.window.attributes("-topmost", True)  # 항상 위에
 
-        label = tk.Label(self.window, text=message)
-        label.pack(pady=10)
+        self.label = tk.Label(self.window, text=message)
+        self.label.pack(pady=10)
 
         # 결정되지 않은(Indeterminate) 모드의 프로그레스바
         self.progress = ttk.Progressbar(self.window, mode='indeterminate', length=200)

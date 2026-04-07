@@ -26,8 +26,8 @@ class CandleCart:
 
         self.app = app
         self.root = app.root
-        self.ticker_code, self.ticker_name, self.ticker_open_price = item_data['Code'], item_data['Name'], item_data[
-            'Open']
+        self.ticker_code, self.ticker_name, self.ticker_open_price, self.ticker_stock_type = item_data['Code'], item_data['Name'], item_data[
+            'Open'], item_data['Market_Type']
 
         font_list = fm.findSystemFonts(fontpaths=None, fontext='ttf')
         malgun_bold = [f for f in font_list if 'malgunbd' in f.lower()][0]
@@ -119,7 +119,7 @@ class CandleCart:
         header_container = tk.Frame(self.ai_frame, bg="#f0f0f0")
         header_container.pack(fill="x", pady=10)
 
-        self.view_mode = tk.IntVar(value=0)  # 0: 공시, 1: 뉴스
+        self.view_mode = tk.IntVar(value=1)  # 0: 공시, 1: 뉴스
 
         tk.Radiobutton(header_container, text="공시", variable=self.view_mode, value=0,
                        font=("Arial", 10, "bold"), bg="#f0f0f0", command=self.on_mode_change).pack(side="left")
@@ -191,8 +191,12 @@ class CandleCart:
 
         def analyze():
             # 실제 데이터 업데이트 작업 (무거운 작업)
+            self.root.after(0, lambda: self.loading.show_progress("최신 뉴스 수집 중..."))
             news_list = rss.pull_request_news(self.ticker_name, 20)
-
+            context = "\n".join([f"• {n['title']}" for n in news_list[:3]])
+            if len(news_list) > 3:
+                context += "\n..."
+            self.root.after(0, lambda: self.loading.show_progress("GENAI: 분석 중...\n"+context))
             result_msg = ai_model.get_ai_detail_briefing(self.ticker_name, news_list)
 
             self.root.after(0, lambda: self.finish_analysis(self.ticker_name, f"{result_msg}"))
@@ -288,7 +292,7 @@ class CandleCart:
         # 2. 작업 완료 후 실행될 내부 함수 정의
         def run_and_stop():
             # 실제 데이터 업데이트 작업 (무거운 작업)
-            neo4j.update_stock_data_smart(self, self.ticker_name, self.ticker_code)
+            neo4j.update_stock_data_smart(self, self.ticker_name, self.ticker_code,self.ticker_stock_type)
 
             # 3. 작업이 끝나면 메인 쓰레드에게 "로딩 창 닫아!"라고 전달
             # self.parent(메인 윈도우)의 after를 사용합니다.
@@ -636,7 +640,7 @@ class CandleCart:
     def get_request(self):
         try:
             # 실시간 데이터 가져오기 (직접 만드신 함수 활용)
-            df = krx.pull_request_stock(self.ticker_code, days=5)
+            df = krx.pull_request_stock(self.ticker_code, days=5,stock_type=self.ticker_stock_type)
             if df is not None and not df.empty:
                 realtime_price = df['Close'].iloc[-1]
                 # 실시간 가격 업데이트
@@ -663,10 +667,10 @@ class CandleCart:
                     self.full_df.at[last_idx, 'High'] = realtime_price
                 if realtime_price < self.full_df.at[last_idx, 'Low']:
                     self.full_df.at[last_idx, 'Low'] = realtime_price
-
+                unit = helper.data_unit(self.ticker_stock_type)
                 # 2. Label 업데이트 (텍스트와 색상 동시 적용)
                 self.price_label.config(
-                    text=f"현재가: {prefix}{realtime_price:,}원",
+                    text=f"현재가: {prefix}{int(realtime_price):,}{unit}",
                     fg=new_color
                 )
                 self.refresh_realtime_chart()
@@ -824,7 +828,7 @@ class CandleCart:
         self.canvas.draw_idle()
 
     def get_date_range(self):
-        df = krx.pull_request_stock(self.ticker_code, days=730)
+        df = krx.pull_request_stock(self.ticker_code, days=730,stock_type=self.ticker_stock_type)
         self.get_default_neo4j_price()
         return df
 

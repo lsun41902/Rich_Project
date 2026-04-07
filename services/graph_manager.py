@@ -26,7 +26,7 @@ class NewsGraphManager:
     def close(self):
         self.driver.close()
 
-    def update_stock_data_smart(self,app,ticker_name, ticker_code):
+    def update_stock_data_smart(self,app, ticker_name, ticker_code, stock_type):
         import services.ui_helper as helper
         import services.KRX as krx
         loading = helper.LoadingWindow(app.root)
@@ -48,7 +48,7 @@ class NewsGraphManager:
             print(f"🔄 [증분 업데이트] {ticker_name}({ticker_code}) 기존 데이터 확인됨. 최근 5일치만 업데이트합니다.")
 
         try:
-            df = krx.pull_request_stock(ticker_code,days)
+            df = krx.pull_request_stock(ticker_code,days=days,stock_type=stock_type)
             print(f"데이터 로드 성공")
         except Exception as e:
             print(f"❌ 데이터 로드 실패: {e}")

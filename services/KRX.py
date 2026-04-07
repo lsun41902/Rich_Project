@@ -1,19 +1,21 @@
 from datetime import datetime, timedelta
 import FinanceDataReader as fdr
-from dateutil.relativedelta import relativedelta
 import config
+import pandas as pd
 
-
-def pull_request_stock(raw_code,days=730):
+def pull_request_stock(raw_code,days=730,stock_type=None):
     try:
-        selected = config.MY_INFO[0]['market_type']
-
-        ticker_code = raw_code.split('.')[0]
-        real_symbol = ticker_code if selected == 0 else raw_code
+        selected = stock_type if not stock_type else config.MY_INFO[0]['market_type']
+        real_symbol = raw_code.split('.')[0] if selected == 0 else raw_code
         start_str = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
         end_str = datetime.now().strftime('%Y-%m-%d')
 
         df = fdr.DataReader(real_symbol, start=start_str, end=end_str)
+        pd.set_option('display.max_columns', None)  # 열 제한 해제, 확인용
+        pd.set_option('display.expand_frame_repr', False)  # 한 줄에 다 나오게
+        if 'Change' not in df.columns:
+            df['Change'] = df['Close'].pct_change()
+        print(df)
         return df
     except Exception as e:
         print(f"2년치 데이터 가져오기 오류: {e}")
@@ -74,9 +76,8 @@ def pull_usd_krw():
     return None, None
 
 
-def pull_krx_top20(is_top_rising):
+def pull_krx_top20(is_top_rising, market_type):
     import pandas as pd
-
     try:
         # 1. 데이터 가져오기 시도
         df_krx = fdr.StockListing('KRX')
@@ -85,7 +86,11 @@ def pull_krx_top20(is_top_rising):
             print("⚠️ KRX로부터 데이터를 가져오지 못했습니다.")
             return pd.DataFrame()  # 빈 데이터프레임 반환
 
+        cols = ['Close', 'Changes', 'ChagesRatio', 'Open', 'High', 'Low', 'Volume', 'Amount', 'Marcap']
         df_filtered = df_krx[df_krx['MarketId'].isin(['STK', 'KSQ'])].copy()
+        for col in cols:
+            # 데이터에 '-' 가 들어있거나 NaN인 경우 0으로 치환
+            df_filtered[col] = pd.to_numeric(df_filtered[col].replace('-', '0'), errors='coerce').fillna(0)
         # 2. 정렬 및 상위 10개 추출
         if is_top_rising:
             # 내림차순(큰 숫자부터) 정렬 후 상위 추출
@@ -95,6 +100,7 @@ def pull_krx_top20(is_top_rising):
             # 오름차순(작은 숫자부터) 정렬 후 상위 추출
             result = df_filtered.sort_values(by='ChagesRatio', ascending=True).head(20)
         print("TOP20의 데이터를 가져왔습니다.")
+        # pd.set_option('display.max_columns', None)  # 열 제한 해제, 확인용
         print(result)
         return result
 
