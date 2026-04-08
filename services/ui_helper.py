@@ -240,3 +240,217 @@ def check_market_open(stock_type, now):
     else:  # 미국 주식 (22:30 ~ 익일 05:00)
         # 22:30 이후 또는 05:00 이전 (미국 시간은 자정을 넘어가므로 or 연산)
         return (h, m) >= (22, 30) or h < 5
+
+
+def calc_ticker_info_position(obj, idx):
+    row = obj.full_df.iloc[idx]
+
+    close_price = row['Close']
+    open_price = row['Open']
+    high_price = row['High']
+    low_price = row['Low']
+    change = row['Change'] * 100
+
+    cur_min, cur_max = obj.ax.get_xlim()
+    pos_ratio = (idx - cur_min) / (cur_max - cur_min) if (cur_max - cur_min) != 0 else 0
+
+    y_min, y_max = obj.ax.get_ylim()
+    target_y = (open_price + close_price) / 2
+    y_ratio = (target_y - y_min) / (y_max - y_min) if (y_max - y_min) != 0 else 0
+
+    x_off = -130 if pos_ratio > 0.6 else 30
+    y_off = -100 if y_ratio > 0.6 else 15
+    label_offset = (x_off, y_off)
+
+    target_y = (open_price + close_price) / 2
+    reason = row['reason'] if 'reason' in obj.full_df.columns else ""
+
+    diff = close_price - open_price
+    if open_price != 0:
+        change_rate = (diff / open_price) * 100
+    else:
+        change_rate = 0
+
+    # 1. 변동에 따른 색상 결정
+    if diff > 0:
+        bg_color = "red"  # 상승: 빨간 배경
+        text_color = "white"
+    elif diff < 0:
+        bg_color = "blue"  # 하락: 파란 배경
+        text_color = "white"
+    else:
+        bg_color = "white"  # 보합: 흰색 배경
+        text_color = "black"
+
+    daily_change_formatted = f"{change :+.2f}%"
+    rate_text = f"{change_rate :+.2f}%"
+    width = 20
+    sep = "-" * width
+    info = {
+        "open": open_price,  # 시가
+        "close": close_price,  # 종가
+        "high": high_price,  # 최고가
+        "low": low_price,  # 최저가
+        "diff": diff,
+        "rate_text": rate_text,  # 금일 대비
+        "target_y": target_y,
+        "offset": label_offset,
+        "bg_color": bg_color,
+        "text_color": text_color,
+        "sep": sep,
+        "daily_change": daily_change_formatted,  # 전일 대비
+        'reason': reason  # 분석 결과
+    }
+    return info
+def calc_max_min_info_position(obj):
+    if hasattr(obj, 'cursor_annotation_high'):
+        try:
+            obj.cursor_annotation_high.remove()
+        except:
+            pass
+
+    if hasattr(obj, 'cursor_annotation_low'):
+        try:
+            obj.cursor_annotation_low.remove()
+        except:
+            pass
+
+    # 1. 범위 계산 로직 (기존과 동일)
+    cur_min, cur_max = obj.ax.get_xlim()
+    cur_ymin, cur_ymax = obj.ax.get_ylim()  # 현재 화면에 보이는 Y축 범위 가져오기
+
+    start_idx = max(0, int(round(cur_min)))
+    end_idx = min(len(obj.full_df) - 1, int(round(cur_max)))
+    visible_data = obj.full_df.iloc[start_idx: end_idx + 1]
+
+    if not visible_data.empty:
+        max_price = visible_data['High'].max()
+        min_price = visible_data['Low'].min()
+
+        real_max_idx = start_idx + visible_data['High'].values.argmax()
+        real_min_idx = start_idx + visible_data['Low'].values.argmin()
+
+        max_pos_x_ratio = (real_max_idx - cur_min) / (cur_max - cur_min) if (cur_max - cur_min) != 0 else 0
+        x_off = -70 if max_pos_x_ratio > 0.8 else 20
+
+        max_pos_y_ratio = (max_price - cur_ymin) / (cur_ymax - cur_ymin) if (cur_ymax - cur_ymin) != 0 else 0
+        y_off = -30 if max_pos_y_ratio > 0.85 else 20  # 너무 높으면 -30(아래로), 아니면 20(위로)
+
+        # 새로운 주석 객체를 생성하여 저장 (이전 객체는 가비지 컬렉터가 처리)
+        obj.cursor_annotation_high = obj.ax.annotate(
+            f"최고가: {int(max_price):,}",
+            xy=(real_max_idx, max_price),
+            xytext=(x_off,y_off),
+            textcoords="offset points", color="white", fontweight="bold",
+            arrowprops=dict(arrowstyle='->', color='red'),
+            bbox=dict(boxstyle='round,pad=0.3', fc='red', ec='red', alpha=0.8),
+        )
+
+        min_pos_x_ratio = (real_min_idx - cur_min) / (cur_max - cur_min) if (cur_max - cur_min) != 0 else 0
+        min_x_off = -70 if min_pos_x_ratio > 0.8 else 20
+
+        # 최저가가 바닥에 너무 붙었으면 위로 올림
+        min_pos_y_ratio = (min_price - cur_ymin) / (cur_ymax - cur_ymin) if (cur_ymax - cur_ymin) != 0 else 0
+        min_y_off = 20 if min_pos_y_ratio < 0.15 else -30  # 너무 낮으면 20(위로), 아니면 -30(아래로)
+
+        obj.cursor_annotation_low = obj.ax.annotate(
+            f"최저가: {int(min_price):,}",
+            xy=(real_min_idx, min_price),
+            xytext=(min_x_off,min_y_off),
+            textcoords="offset points", color="white", fontweight="bold",
+            arrowprops=dict(arrowstyle='->', color='blue'),
+            bbox=dict(boxstyle='round,pad=0.3', fc='blue', ec='blue', alpha=0.8),
+        )
+        obj.ax.set_ylim(min_price * 0.90, max_price * 1.10)
+        obj.canvas.draw_idle()
+        return min_price, max_price
+    return None, None
+
+
+# 휠 이벤트 연결 (이제 휠 줌도 축 범위 변경을 유발하므로 자동으로 위의 함수가 작동함)
+def on_scroll(obj, event):
+    if event.inaxes != obj.ax: return
+    base_scale = 1.2
+    scale = 1 / base_scale if event.button == 'up' else base_scale
+
+    # 1. 현재 축 범위 가져오기
+    cur_xlim = obj.ax.get_xlim()
+    cur_ylim = obj.ax.get_ylim()
+
+    # 2. 마우스 위치 기준 잡기
+    xdata, ydata = event.xdata, event.ydata
+
+    # 3. 새로운 범위 계산 (X와 Y 동일하게 적용)
+    new_width = (cur_xlim[1] - cur_xlim[0]) * scale
+    new_height = (cur_ylim[1] - cur_ylim[0]) * scale
+
+    relx = (cur_xlim[1] - xdata) / (cur_xlim[1] - cur_xlim[0])
+    rely = (cur_ylim[1] - ydata) / (cur_ylim[1] - cur_ylim[0])
+
+    # 4. 축 업데이트
+    obj.ax.set_xlim(xdata - new_width * (1 - relx), xdata + new_width * relx)
+    calc_max_min_info_position(obj)
+
+    obj.canvas.draw_idle()
+
+def on_press(obj, event):
+    if event.inaxes == obj.ax:
+        obj.is_dragging = True
+        obj.press_data_x = event.xdata
+        obj.press_pixel_x = event.x
+
+def on_release(obj, event):
+    obj.is_dragging = False
+
+def on_motion(obj, event):
+    if event.inaxes != obj.ax:  # 마우스가 차트 안에 있을 때만
+        return
+
+    if obj.is_dragging:
+        # 드래그 거리 계산
+        dx = obj.press_data_x - event.xdata
+        cur_xlim = obj.ax.get_xlim()
+
+        # 새로운 범위 계산
+        new_min = cur_xlim[0] + dx
+        new_max = cur_xlim[1] + dx
+
+        total_len = len(obj.full_df)
+        # [수정] 오른쪽 여백을 위해 total_len에 + 10 정도를 더해줍니다.
+        padding = 10
+
+        if new_min < -5:  # 왼쪽으로도 약간 더 갈 수 있게 수정
+            return
+        if new_max > total_len + padding:  # 오른쪽 끝에 여백 허용
+            return
+
+        obj.ax.set_xlim(new_min, new_max)
+
+        # Y축 자동 조절
+        calc_max_min_info_position(obj)
+
+    obj.draw_current_candle_data(event)
+    obj.canvas.draw_idle()
+
+def limit_check_and_apply(obj, *args):
+    # 1. 인덱스 기반 경계값 설정
+    total_len = len(obj.full_df)
+    min_limit = -1
+    max_limit = total_len + 1
+    # 2. 현재 축 범위 가져오기
+    cur_min, cur_max = obj.ax.get_xlim()
+
+    # 3. 제한 적용 로직 (인덱스 기준)
+    needs_redraw = False
+    new_min, new_max = cur_min, cur_max
+
+    if cur_min < min_limit:
+        new_min = min_limit
+        needs_redraw = True
+    if cur_max > max_limit:
+        new_max = max_limit
+        needs_redraw = True
+
+    if needs_redraw:
+        obj.ax.set_xlim(new_min, new_max)
+        obj.canvas.draw_idle()

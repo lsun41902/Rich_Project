@@ -81,6 +81,7 @@ class StockApp:
         tk.Radiobutton(radio_frame, text="한국 주식", variable=self.stock_type, value=0).pack(side="left", padx=10)
         tk.Radiobutton(radio_frame, text="미국 주식", variable=self.stock_type, value=1).pack(side="left", padx=10)
         tk.Button(radio_frame,text="🏅 금 시세", command=self.show_gold_detail).pack(side="left",padx=5)
+        tk.Button(radio_frame, text="💸 달러 시세", command=self.show_dollar_detail).pack(side="left", padx=5)
 
         self.set_tree_view_type(0)
         tk.Button(radio_frame,text="-TOP 20", command=lambda: self.low_top20()).pack(side="right",padx=5)
@@ -163,6 +164,9 @@ class StockApp:
         from ui.ticker_gold import GoldCart
         GoldCart(self)
 
+    def show_dollar_detail(self):
+        from ui.ticker_dollar import DollarCart
+        DollarCart(self)
 
 
     # 4. 콜백 함수 정의 (클래스 내부에 추가)
@@ -421,7 +425,7 @@ class StockApp:
             target_val = float(row['Target_Price']) if stock_type == 0 else float(row['Target_Price_US'])
             current_val = float(row['Close'])
 
-            if stock_type == 0 and current_time_str in ["09:00", "15:20"]:
+            if stock_type == 0 and "09:00" <= current_time_str <= "15:20":
                 # 목표가 도달 체크
                 if current_val >= target_val:
                     if code not in self.already_alerted:
@@ -432,7 +436,7 @@ class StockApp:
                     # 목표가 아래로 내려가면 다시 알림 가능 상태로 복구
                     if code in self.already_alerted:
                         self.already_alerted.remove(code)
-            elif stock_type == 1 and current_time_str in ["22:30", "05:00"]:
+            elif stock_type == 1 and ("23:30" <= current_time_str <= "23:59" or "00:00" <= current_time_str <= "06:00"):
                 # 목표가 도달 체크
                 if current_val >= target_val:
                     if code not in self.already_alerted:

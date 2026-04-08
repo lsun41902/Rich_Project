@@ -11,9 +11,14 @@ def pull_request_stock(raw_code,days=730,stock_type=None):
         df = fdr.DataReader(real_symbol, start=start_str, end=end_str)
         pd.set_option('display.max_columns', None)  # 열 제한 해제, 확인용
         pd.set_option('display.expand_frame_repr', False)  # 한 줄에 다 나오게
-        if 'Change' not in df.columns:
-            df['Change'] = df['Close'].pct_change()
         print(df)
+        if df['Close'].isnull().any():
+            # 빈칸이 있다면 앞의 데이터로 채움 (차트 끊김 방지)
+            df['Close'] = df['Close'].ffill()
+
+        if 'Change' not in df.columns:
+            # 변화율 계산 및 경고 해결
+            df['Change'] = df['Close'].pct_change(fill_method=None).fillna(0)
         return df
     except Exception as e:
         print(f"2년치 데이터 가져오기 오류: {e}")
@@ -72,6 +77,15 @@ def pull_usd_krw():
         change_p = df['Close'].pct_change(fill_method=None).iloc[-1] * 100  # 전일 대비 변동률
         return round(current_rate, 2), round(change_p, 2)
     return None, None
+
+def pull_dollar_krw(days=365):
+    import FinanceDataReader as fdr
+    # 'USD/KRW' 심볼을 사용합니다.
+    # 최근 2일치 데이터를 가져와서 가장 마지막(최신) 행을 선택합니다.
+    df = fdr.DataReader('USD/KRW').tail(days)
+    df = df[df['Close'] > 0].dropna()
+    df['Change'] = df['Close'].pct_change(fill_method=None)
+    return df
 
 
 def pull_krx_top20(is_top_rising, stock_type):

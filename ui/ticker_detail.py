@@ -439,11 +439,11 @@ class CandleCart:
         self.ax.yaxis.set_major_formatter(FuncFormatter(self.price_formatter))
 
         # 이벤트 연결 (이 시점에 self.ax가 존재하므로 안전함)
-        self.ax.callbacks.connect('xlim_changed', self.limit_check_and_apply)
-        self.canvas.mpl_connect('scroll_event', self.on_scroll)
-        self.canvas.mpl_connect('button_press_event', self.on_press)
-        self.canvas.mpl_connect('button_release_event', self.on_release)
-        self.canvas.mpl_connect('motion_notify_event', self.on_motion)
+        self.ax.callbacks.connect('xlim_changed', lambda event: helper.limit_check_and_apply)
+        self.canvas.mpl_connect('scroll_event', lambda event: helper.on_scroll(self, event))
+        self.canvas.mpl_connect('button_press_event', lambda event: helper.on_press(self, event))
+        self.canvas.mpl_connect('button_release_event', lambda event: helper.on_release(self, event))
+        self.canvas.mpl_connect('motion_notify_event', lambda event: helper.on_motion(self, event))
 
         # 첫 화면(1주)으로 초기 범위 설정
         self.on_draw_chart(0)
@@ -539,7 +539,7 @@ class CandleCart:
 
     def on_tree_click(self, event):
         # 1. 초기화 및 대기 메시지 표시
-        self.ai_summary.config(state="normal")
+        self.ai_summary.config(state="normal", wrap="word")
         self.ai_summary.delete("1.0", tk.END)
         self.ai_summary.insert(tk.END, "🤖 AI 분석 요청 중입니다. 잠시만 기다려 주세요...", "header")  # 태그 적용 가능
         self.ai_summary.update_idletasks()  # 메시지 즉시 렌더링
@@ -551,6 +551,13 @@ class CandleCart:
                 values = self.tree.item(selected_item, "values")
                 target_rcp_no = values[2]
                 target_rcp_text = self.dart_instance.get_notice_content_clean(target_rcp_no)
+                context = f"{values[1]}\nGENAI 3.1 flash가 공시 검토중..."
+
+                # 1. 초기화 및 대기 메시지 표시
+                self.ai_summary.config(state="normal", wrap="word")
+                self.ai_summary.delete("1.0", tk.END)
+                self.ai_summary.insert(tk.END, context, "header")  # 태그 적용 가능
+                self.ai_summary.update_idletasks()  # 메시지 즉시 렌더링
                 result = ai_model.get_ai_summary(target_rcp_text)
                 self.update_summary_ui(result)
             else:
@@ -558,10 +565,10 @@ class CandleCart:
                 index = self.tree.index(selected_item)
                 cur_news = self.ticker_news[index]
                 target_news_content = rss.pull_news_content(cur_news)
-                context = "\n".join([f"• {n['title']}" for n in target_news_content[:3]])
+                context = f"{target_news_content[0]['title']}\nGENAI 3.1 flash가 뉴스 검토중..."
 
                 # 1. 초기화 및 대기 메시지 표시
-                self.ai_summary.config(state="normal")
+                self.ai_summary.config(state="normal", wrap="word")
                 self.ai_summary.delete("1.0", tk.END)
                 self.ai_summary.insert(tk.END, context, "header")  # 태그 적용 가능
                 self.ai_summary.update_idletasks()  # 메시지 즉시 렌더링
@@ -763,9 +770,9 @@ class CandleCart:
         )
 
         # 5. Y축은 현재 화면의 고가/저가에 맞게 자동 조정 (기존 함수 재활용)
-        visible_min, visible_max = self.get_visible_max_price()
+        visible_min, visible_max = helper.calc_max_min_info_position(self)
         if visible_min and visible_max:
-            self.ax.set_ylim(visible_min * 0.98, visible_max * 1.02)
+            self.ax.set_ylim(visible_min * 0.90, visible_max * 1.10)
 
             # [추가] 기억해둔 마우스 위치에 커서 주석 다시 그리기
             if self.last_mouse_idx is not None:
@@ -778,73 +785,14 @@ class CandleCart:
                                                               bbox=dict(boxstyle="round", fc="w"),
                                                               arrowprops=dict(arrowstyle="->"))
 
-                    info = self.calc(self.full_df, idx)
+                    info = helper.calc_ticker_info_position(self, idx)
                     self.show_current_info(idx, info)
 
         self.ax.yaxis.set_major_formatter(FuncFormatter(self.price_formatter))
         # 6. 유휴 시간에 화면 갱신
         self.canvas.draw_idle()
 
-    def calc(self, df, idx):
-        row = df.iloc[idx]
 
-        close_price = row['Close']
-        open_price = row['Open']
-        high_price = row['High']
-        low_price = row['Low']
-        change = row['Change'] * 100
-
-        cur_min, cur_max = self.ax.get_xlim()
-        pos_ratio = (idx - cur_min) / (cur_max - cur_min) if (cur_max - cur_min) != 0 else 0
-
-        y_min, y_max = self.ax.get_ylim()
-        target_y = (open_price + close_price) / 2
-        y_ratio = (target_y - y_min) / (y_max - y_min) if (y_max - y_min) != 0 else 0
-
-        x_off = -100 if pos_ratio > 0.6 else 15
-        y_off = -100 if y_ratio > 0.6 else 15
-        label_offset = (x_off, y_off)
-
-        target_y = (open_price + close_price) / 2
-        reason = row['reason'] if 'reason' in df.columns else ""
-
-        diff = close_price - open_price
-        if open_price != 0:
-            change_rate = (diff / open_price) * 100
-        else:
-            change_rate = 0
-
-        # 1. 변동에 따른 색상 결정
-        if diff > 0:
-            bg_color = "red"  # 상승: 빨간 배경
-            text_color = "white"
-        elif diff < 0:
-            bg_color = "blue"  # 하락: 파란 배경
-            text_color = "white"
-        else:
-            bg_color = "white"  # 보합: 흰색 배경
-            text_color = "black"
-
-        daily_change_formatted = f"{change :+.2f}%"
-        rate_text = f"{change_rate :+.2f}%"
-        width = 20
-        sep = "-" * width
-        info = {
-            "open": open_price,  # 시가
-            "close": close_price,  # 종가
-            "high": high_price,  # 최고가
-            "low": low_price,  # 최저가
-            "diff": diff,
-            "rate_text": rate_text,  # 금일 대비
-            "target_y": target_y,
-            "offset": label_offset,
-            "bg_color": bg_color,
-            "text_color": text_color,
-            "sep": sep,
-            "daily_change": daily_change_formatted,  # 전일 대비
-            'reason': reason  # 분석 결과
-        }
-        return info
 
     def on_draw_chart(self, date_type):
         total_len = len(self.full_df)
@@ -857,145 +805,19 @@ class CandleCart:
 
         # 캔들차트의 X축은 인덱스(0, 1, 2...)이므로 인덱스로 범위를 잡습니다.
         self.ax.set_xlim(start_idx - 1, end_idx + 1)
-        visible_min, visible_max = self.get_visible_max_price()  # 직접 만드신 함수
-        self.ax.set_ylim(visible_min * 0.98, visible_max * 1.02)
-        self.canvas.draw_idle()
+        helper.calc_max_min_info_position(self)
 
     def get_date_range(self):
         df = krx.pull_request_stock(self.ticker_code, days=730,stock_type=self.ticker_stock_type)
         self.get_default_neo4j_price()
         return df
 
-    # 휠 이벤트 연결 (이제 휠 줌도 축 범위 변경을 유발하므로 자동으로 위의 함수가 작동함)
-    def on_scroll(self, event):
-        if event.inaxes != self.ax: return
-        base_scale = 1.2
-        scale = 1 / base_scale if event.button == 'up' else base_scale
-
-        # 1. 현재 축 범위 가져오기
-        cur_xlim = self.ax.get_xlim()
-        cur_ylim = self.ax.get_ylim()
-
-        # 2. 마우스 위치 기준 잡기
-        xdata, ydata = event.xdata, event.ydata
-
-        # 3. 새로운 범위 계산 (X와 Y 동일하게 적용)
-        new_width = (cur_xlim[1] - cur_xlim[0]) * scale
-        new_height = (cur_ylim[1] - cur_ylim[0]) * scale
-
-        relx = (cur_xlim[1] - xdata) / (cur_xlim[1] - cur_xlim[0])
-        rely = (cur_ylim[1] - ydata) / (cur_ylim[1] - cur_ylim[0])
-
-        # 4. 축 업데이트
-        self.ax.set_xlim(xdata - new_width * (1 - relx), xdata + new_width * relx)
-        visible_min, visible_max = self.get_visible_max_price()  # 직접 만드신 함수
-        self.ax.set_ylim(visible_min * 0.98, visible_max * 1.02)
-
-        self.canvas.draw_idle()
-
-    def get_visible_max_price(self):
-        # 기존 주석이 있다면 '물리적으로' 도화지에서 떼어내는 작업
-        if hasattr(self, 'cursor_annotation_high'):
-            try:
-                self.cursor_annotation_high.remove()  # 이게 핵심입니다!
-            except:
-                pass
-
-        # 기존 주석이 있다면 '물리적으로' 도화지에서 떼어내는 작업
-        if hasattr(self, 'cursor_annotation_low'):
-            try:
-                self.cursor_annotation_low.remove()  # 이게 핵심입니다!
-            except:
-                pass
-
-        # 1. 범위 계산 로직 (기존과 동일)
-        cur_min, cur_max = self.ax.get_xlim()
-        start_idx = max(0, int(round(cur_min)))
-        end_idx = min(len(self.full_df) - 1, int(round(cur_max)))
-        visible_data = self.full_df.iloc[start_idx: end_idx + 1]
-
-        if not visible_data.empty:
-            max_price = visible_data['High'].max()
-            min_price = visible_data['Low'].min()
-
-            real_max_idx = start_idx + visible_data['High'].values.argmax()
-            real_min_idx = start_idx + visible_data['Low'].values.argmin()
-
-            max_pos_ratio = (real_max_idx - cur_min) / (cur_max - cur_min) if (cur_max - cur_min) != 0 else 0
-            max_offset = (-70, 20) if max_pos_ratio > 0.8 else (20, 20)
-
-            # 새로운 주석 객체를 생성하여 저장 (이전 객체는 가비지 컬렉터가 처리)
-            self.cursor_annotation_high = self.ax.annotate(
-                f"최고가: {max_price:,}",
-                xy=(real_max_idx, max_price),
-                xytext=max_offset,
-                textcoords="offset points", color="white", fontweight="bold",
-                arrowprops=dict(arrowstyle='->', color='red'),
-                bbox=dict(boxstyle='round,pad=0.3', fc='red', ec='red', alpha=0.8),
-            )
-
-            min_pos_ratio = (real_min_idx - cur_min) / (cur_max - cur_min) if (cur_max - cur_min) != 0 else 0
-            min_offset = (-70, 20) if min_pos_ratio > 0.8 else (20, 20)
-
-            self.cursor_annotation_low = self.ax.annotate(
-                f"최저가: {min_price:,}",
-                xy=(real_min_idx, min_price),
-                xytext=min_offset,
-                textcoords="offset points", color="white", fontweight="bold",
-                arrowprops=dict(arrowstyle='->', color='blue'),
-                bbox=dict(boxstyle='round,pad=0.3', fc='blue', ec='blue', alpha=0.8),
-            )
-
-            return min_price, max_price
-        return None, None
-
-    def on_press(self, event):
-        if event.inaxes == self.ax:
-            self.is_dragging = True
-            self.press_data_x = event.xdata  # 시작 지점 저장
-            self.press_pixel_x = event.x
-
-    def on_release(self, event):
-        self.is_dragging = False
-
-    def on_motion(self, event):
-        if event.inaxes != self.ax:  # 마우스가 차트 안에 있을 때만
-            return
-
-        if self.is_dragging:
-            # 드래그 거리 계산
-            dx = self.press_data_x - event.xdata
-            cur_xlim = self.ax.get_xlim()
-
-            # 새로운 범위 계산
-            new_min = cur_xlim[0] + dx
-            new_max = cur_xlim[1] + dx
-
-            total_len = len(self.full_df)
-            # [수정] 오른쪽 여백을 위해 total_len에 + 10 정도를 더해줍니다.
-            padding = 10
-
-            if new_min < -5:  # 왼쪽으로도 약간 더 갈 수 있게 수정
-                return
-            if new_max > total_len + padding:  # 오른쪽 끝에 여백 허용
-                return
-
-            self.ax.set_xlim(new_min, new_max)
-
-            # Y축 자동 조절
-            visible_min, visible_max = self.get_visible_max_price()
-            if visible_min and visible_max:
-                self.ax.set_ylim(visible_min * 0.98, visible_max * 1.02)
-
-        self.draw_current_candle_data(event)
-        self.canvas.draw_idle()
-
     def draw_current_candle_data(self, event):
         # 1. 인덱스 계산 및 저장 (기존과 동일)
         x_idx = int(round(event.xdata))
         if 0 <= x_idx < len(self.full_df):
             self.last_mouse_idx = x_idx
-            info = self.calc(self.full_df, x_idx)
+            info = helper.calc_ticker_info_position(self,x_idx)
             self.show_current_info(x_idx, info)
 
     def show_current_info(self, x_idx, info):
@@ -1024,25 +846,3 @@ class CandleCart:
         else:
             self.cursor_annotation.set_visible(False)
 
-    def limit_check_and_apply(self, *args):
-        # 1. 인덱스 기반 경계값 설정
-        total_len = len(self.full_df)
-        min_limit = -1
-        max_limit = total_len + 1
-        # 2. 현재 축 범위 가져오기
-        cur_min, cur_max = self.ax.get_xlim()
-
-        # 3. 제한 적용 로직 (인덱스 기준)
-        needs_redraw = False
-        new_min, new_max = cur_min, cur_max
-
-        if cur_min < min_limit:
-            new_min = min_limit
-            needs_redraw = True
-        if cur_max > max_limit:
-            new_max = max_limit
-            needs_redraw = True
-
-        if needs_redraw:
-            self.ax.set_xlim(new_min, new_max)
-            self.canvas.draw_idle()

@@ -96,7 +96,7 @@ def pull_news_content(link):
 
         # 2. 이제 실제 주소로 크롤링 진행
         config = Config()
-        config.browser_user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36..."
+        config.browser_user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
         if "naver.com" in url:
             clean_text = backup_naver_crawl(url)

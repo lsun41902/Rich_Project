@@ -12,9 +12,7 @@ try:
 except:
     locale.setlocale(locale.LC_TIME, 'ko_KR')
 
-from dto.gold_dto import GoldDTO
-
-class GoldCart:
+class DollarCart:
     def __init__(self, app):
         import matplotlib.font_manager as fm
         self.app = app
@@ -35,7 +33,7 @@ class GoldCart:
         self.news = None
         self.init_ui()
         # # 4. 무거운 작업은 스레드로 시작
-        self.loading.show_progress("금의 정보를 가져오는 중 입니다...\n잠시만 기다려주세요...")
+        self.loading.show_progress("달러의 정보를 가져오는 중 입니다...\n잠시만 기다려주세요...")
         thread = threading.Thread(target=self.load_data_async, daemon=True)
         thread.start()
 
@@ -50,8 +48,6 @@ class GoldCart:
         """백그라운드에서 데이터를 가져오는 함수 (Worker Thread)"""
         try:
             # 무거운 작업들 수행
-            usd, _ = krx.pull_usd_krw()
-            self.gold = GoldDTO(1, '132030', '1돈', usd)
             from services.dart import dart
             self.dart_instance = dart
             self.original_df = self.get_date_range()
@@ -87,7 +83,7 @@ class GoldCart:
 
         # 1. 새 창 설정
         self.chart_window = tk.Toplevel(self.root)
-        self.chart_window.title("금 실시간 차트")
+        self.chart_window.title("달러 실시간 차트")
         self.chart_window.protocol("WM_DELETE_WINDOW", self.on_close)
         self.chart_window.iconbitmap(helper.CHART_ICON_PATH)
         helper.center_window(self.chart_window, 1200, 800, self.root)
@@ -100,7 +96,7 @@ class GoldCart:
         top_frame.grid_columnconfigure(3, weight=1)  # 오른쪽 빈 공간
 
         # 2. 종목명 레이블 (grid 사용)
-        self.ticker_name_label = tk.Label(top_frame, text="1돈", font=("Arial", 14, "bold"))
+        self.ticker_name_label = tk.Label(top_frame, text="1달러", font=("Arial", 14, "bold"))
         self.ticker_name_label.grid(row=0, column=1, padx=10)
         # 3. 실시간 금액 레이블 (grid 사용)
         self.price_label = tk.Label(top_frame, text="로딩 중...", font=("Arial", 14), fg="blue")
@@ -173,7 +169,7 @@ class GoldCart:
         try:
             self.tree.insert("", "end", values=("", "관련 뉴스 로딩중...", ""))
 
-            self.news = rss.pull_request_news("금 시세")
+            self.news = rss.pull_request_news("달러 시세")
 
             # 데이터를 다 가져왔으면 UI 업데이트 함수 호출 (스케줄링)
             if hasattr(self, 'chart_window') and self.chart_window.winfo_exists():
@@ -244,14 +240,11 @@ class GoldCart:
 
         # [핵심] fig, ax를 self로 저장
         self.fig, self.axes = mpf.plot(df, type='candle', mav=(5, 20, 60), style=self.s,
-                                       returnfig=True, figsize=(7, 5), tight_layout=True, volume=True,
+                                       returnfig=True, figsize=(7, 5), tight_layout=True, volume=False,
                                        scale_padding=dict(left=1.2, right=1.2, top=1.2, bottom=1.2))
+
         self.ax = self.axes[0]
-        self.ax.set_ylabel("1돈 (3.75g)(KRW)")
-        if len(self.axes) > 2:
-            vol_ax = self.axes[2]
-            vol_ax.set_ylabel("거래량")
-            vol_ax.yaxis.set_major_formatter(FuncFormatter(helper.volume_formatter))
+        self.ax.set_ylabel("1달러 (KRW)")
 
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.chart_frame)
         self.canvas.get_tk_widget().pack(side="top", fill="both", expand=True)
@@ -287,7 +280,7 @@ class GoldCart:
         self.ax.yaxis.set_major_formatter(FuncFormatter(self.price_formatter))
 
         # 이벤트 연결 (이 시점에 self.ax가 존재하므로 안전함)
-        self.ax.callbacks.connect('xlim_changed', lambda event: helper.limit_check_and_apply(self))
+        self.ax.callbacks.connect('xlim_changed', lambda event: helper.limit_check_and_apply)
         self.canvas.mpl_connect('scroll_event', lambda event: helper.on_scroll(self, event))
         self.canvas.mpl_connect('button_press_event', lambda event: helper.on_press(self, event))
         self.canvas.mpl_connect('button_release_event', lambda event: helper.on_release(self, event))
@@ -401,7 +394,9 @@ class GoldCart:
     def get_request(self):
         try:
             # 실시간 데이터 가져오기 (직접 만드신 함수 활용)
-            df = krx.pull_krx_gold(self.gold,days=7)
+            df = krx.pull_dollar_krw(days=7)
+            print(len(df))
+
             if df is not None and not df.empty:
                 realtime_price = df['Close'].iloc[-1]
                 # 실시간 가격 업데이트
@@ -448,15 +443,13 @@ class GoldCart:
         # 1. 현재 화면에 보이는 범위(X축)를 유지함
         cur_xlim = self.ax.get_xlim()
         self.ax.clear()
-        if len(self.axes) > 2:  # 거래량 차트가 있다면
-            self.axes[2].clear()
 
         mpf.plot(
             self.full_df,
             type='candle',
             mav=(5, 20, 60),
             ax=self.ax,
-            volume=self.axes[2] if len(self.axes) > 2 else False,
+            volume=False,
             style=self.s,
         )
 
@@ -469,7 +462,7 @@ class GoldCart:
 
         # 4. X축 범위를 복구해서 화면이 튕기지 않게 함
         self.ax.set_xlim(cur_xlim)
-        self.ax.set_ylabel("1돈 (3.75g)(KRW)")
+        self.ax.set_ylabel("1달러 (KRW)")
         if len(self.axes) > 2:
             vol_ax = self.axes[2]
             vol_ax.set_ylabel("거래량")
@@ -516,8 +509,6 @@ class GoldCart:
         self.canvas.draw_idle()
 
 
-
-
     def on_draw_chart(self, date_type):
         total_len = len(self.full_df)
 
@@ -532,9 +523,9 @@ class GoldCart:
 
     def get_date_range(self):
         # 2년치 로드
-        df = krx.pull_krx_gold(self.gold,days=730)
+        df = krx.pull_dollar_krw(days=365)
+        print(len(df))
         return df
-
 
     def draw_current_candle_data(self, event):
         # 1. 인덱스 계산 및 저장 (기존과 동일)
@@ -565,4 +556,5 @@ class GoldCart:
             self.cursor_annotation.set_visible(True)
         else:
             self.cursor_annotation.set_visible(False)
+
 
