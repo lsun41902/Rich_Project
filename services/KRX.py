@@ -1,12 +1,10 @@
 from datetime import datetime, timedelta
 import FinanceDataReader as fdr
-import config
 import pandas as pd
 
 def pull_request_stock(raw_code,days=730,stock_type=None):
     try:
-        selected = stock_type if not stock_type else config.MY_INFO[0]['market_type']
-        real_symbol = raw_code.split('.')[0] if selected == 0 else raw_code
+        real_symbol = raw_code.split('.')[0] if stock_type == 0 else raw_code
         start_str = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
         end_str = datetime.now().strftime('%Y-%m-%d')
 
@@ -76,7 +74,7 @@ def pull_usd_krw():
     return None, None
 
 
-def pull_krx_top20(is_top_rising, market_type):
+def pull_krx_top20(is_top_rising, stock_type):
     import pandas as pd
     try:
         # 1. 데이터 가져오기 시도

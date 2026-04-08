@@ -8,7 +8,7 @@ def insert_ticker(current_user, code, name, price, stock_type):
         with sql_db.get_connection() as conn:
             with conn:
                 cur = conn.cursor()
-                query = f"""INSERT INTO tickers (user_id, ticker_code, ticker_name, {target_col}, market_type)
+                query = f"""INSERT INTO tickers (user_id, ticker_code, ticker_name, {target_col}, stock_type)
                                 VALUES (?, ?, ?, ?, ?)
                                 """
 
@@ -26,7 +26,7 @@ def insert_stock_us(df):
     # 1. 쿼리문 준비
     query = """
         INSERT OR REPLACE INTO default_tickers_US 
-        (symbol, name_en, name_ko, industry, market_type) 
+        (symbol, name_en, name_ko, industry, stock_type) 
         VALUES (?, ?, ?, ?, ?)
     """
 

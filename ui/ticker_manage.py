@@ -18,7 +18,7 @@ class TickerManage:
 
         # 안전하게 언패킹
         (self.ticker_code, self.ticker_name, self.target_price,
-         self.target_price_us, _, _, _, _, self.market_type) = self.item_values
+         self.target_price_us, _, _, _, _, self.stock_type_default) = self.item_values
         self.db_id = db_id
         self.tree = None
         self.init_ui()
@@ -26,21 +26,20 @@ class TickerManage:
     def init_ui(self):
         self.add_win = tk.Toplevel(self.root)
         self.add_win.title("새 종목 추가")
-        self.add_win.geometry("300x450")
         self.add_win.iconbitmap(helper.SETTING_ICON_PATH)
         helper.center_window(self.add_win, 300, 450, self.root)
 
         # 시장 선택 레이블 및 버튼
         stock_frame = tk.Frame(self.add_win)
-        tk.Label(stock_frame, text="시장 선택:", font=("Malgun Gothic", 9, "bold")).pack(pady=5)
-        self.cur_stock = tk.IntVar(value=self.market_type)
-        self.stock_type = self.cur_stock.get()
-        self.stock_ko = tk.Radiobutton(stock_frame, text="국장", variable=self.cur_stock, value=0,
-                                       font=("Arial", 10, "bold"), bg="#f0f0f0", command=self.on_stock_change).pack(
-            side="left")
-        self.stock_us = tk.Radiobutton(stock_frame, text="국장", variable=self.cur_stock, value=0,
-                                       font=("Arial", 10, "bold"), bg="#f0f0f0", command=self.on_stock_change).pack(
-            side="left")
+        stock_frame.pack(pady=5,padx=5)
+        self.stock_type = tk.IntVar(value=self.stock_type_default)
+        self.cur_stock = self.stock_type.get()
+        self.stock_ko = tk.Radiobutton(stock_frame, text="한국 주식", variable=self.stock_type, value=0,
+                                       font=("Arial", 10, "bold"), bg="#f0f0f0", command=self.on_stock_change)
+        self.stock_ko.pack(side="left")
+        self.stock_us = tk.Radiobutton(stock_frame, text="미국 주식", variable=self.stock_type, value=1,
+                                       font=("Arial", 10, "bold"), bg="#f0f0f0", command=self.on_stock_change)
+        self.stock_us.pack(side="left")
 
         search_frame = tk.Frame(self.add_win)
 
@@ -53,8 +52,6 @@ class TickerManage:
         self.ent_name = tk.Entry(self.add_win)
         self.ent_name.insert(0, self.ticker_name)
         self.ent_name.pack(padx=5)
-        self.ent_name.bind("<FocusIn>", lambda event: helper.set_korean_ime())
-        self.ent_name.bind("<Return>", lambda e: self.open_search_window())
 
         btn_search = tk.Button(search_frame, text="검색", command=lambda: self.open_search_window())
         btn_search.pack(side="left")  # Entry 바로 오른쪽 배치
@@ -63,15 +60,16 @@ class TickerManage:
         self.ent_code = tk.Entry(self.add_win)
         self.ent_code.insert(0, self.ticker_code)
         self.ent_code.pack(padx=5)
-        self.ent_code.bind("<FocusIn>", lambda event: helper.set_korean_ime())
 
         # 실시간으로 표시될 라벨
         self.label_display = tk.Label(self.add_win, text="", fg="blue")
         self.label_display.pack(pady=5)
 
-        self.price_var = tk.StringVar(value=self.target_price)
+
+        self.price_var = tk.StringVar(value=self.target_price) if self.stock_type == 0 else tk.StringVar(value=self.target_price_us)
         # 3. Entry 생성 시 textvariable 연결
-        self.ent_price = tk.Entry(self.add_win, textvariable=self.price_var)
+        vcmd = (self.root.register(self.validate_numbers), '%P')
+        self.ent_price = tk.Entry(self.add_win, textvariable=self.price_var,validate='key', validatecommand=vcmd)
         self.price_var.trace_add("write", self._update_display)  # 값 변화 감지 시작!
         self.ent_price.pack()
         self.ent_price.bind("<Return>",lambda event: self.save_new_ticker)
@@ -79,11 +77,31 @@ class TickerManage:
 
         tk.Button(self.add_win, text="저장", command=self.save_new_ticker, width=15, bg="#e1f5fe").pack(pady=25)
 
+        if self.is_edit_mode:
+            self.ent_name.config(state='readonly')
+            self.ent_code.config(state='readonly')
+            btn_search.config(state='disabled')
+            self.stock_ko.config(state="disabled")
+            self.stock_us.config(state="disabled")
+        else:
+            if self.cur_stock == 0:
+                self.ent_name.bind("<FocusIn>", lambda event: helper.set_korean_ime())
+            self.ent_name.bind("<Return>", lambda e: self.open_search_window())
+
+    def validate_numbers(self, P):
+        # P가 비어있거나(삭제 시) 모두 숫자인 경우에만 True 반환
+        if P == "" or P.isdigit():
+            return True
+        else:
+            # 숫자가 아니면 입력을 거부함 (소리 나게 하려면 벨소리 추가 가능)
+            self.root.bell()
+            return False
+
     def on_stock_change(self, stock_type=None):
         if stock_type:
-            self.stock_type = stock_type
+            self.cur_stock = stock_type
         else:
-            self.stock_type = self.cur_stock.get()
+            self.cur_stock = self.stock_type.get()
         self._update_display()
 
     def save_new_ticker(self, event=None):
@@ -95,7 +113,7 @@ class TickerManage:
         clean_code = raw_code.split(".")[0]
 
         # 1. 검증: 코드가 DB에 없는 경우
-        all_tickers = select_db.select_default_ticker_list(self.stock_type)
+        all_tickers = select_db.select_default_ticker_list(self.cur_stock)
         if (clean_code,) not in all_tickers:
             helper.show_message_box(self.add_win, title="경고", msg="코드를 확인해 주세요.", mtype=1)
             return
@@ -108,11 +126,11 @@ class TickerManage:
             return
 
         if self.is_edit_mode:
-            update_db.update_ticker_in_db(self.db_id, raw_code, name, price, self.stock_type)
+            update_db.update_ticker_in_db(self.db_id, raw_code, name, price, self.cur_stock)
         else:
-            insert_db.insert_ticker(config.CUR_USER_ID, raw_code, name, price, self.stock_type)
-
-        self.app.refresh_tree()
+            insert_db.insert_ticker(config.CUR_USER_ID, raw_code, name, price, self.cur_stock)
+        self.app.stock_type.set(self.cur_stock)
+        self.app.on_market_change()
         self.add_win.destroy()  # 저장이 완료된 직후에만 여기서 닫습니다.
 
     def open_search_window(self, event=None):
@@ -122,7 +140,7 @@ class TickerManage:
     # 2. 변수가 변할 때 실행될 함수
     def _update_display(self, *args):
         val = self.price_var.get().replace(',', '')
-        unit = helper.data_unit(self.stock_type)
+        unit = helper.data_unit(self.cur_stock)
         if val.isdigit():
             self.label_display.config(text=f"목표가: {int(val):,}{unit}")
         else:

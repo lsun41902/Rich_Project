@@ -58,7 +58,7 @@ def select_user_ticker_list(user_id):
             with conn:
                 cur = conn.cursor()
                 cur.execute(
-                    "SELECT id, ticker_code, ticker_name, target_price, target_price_us, buy_price, buy_price_us, amount, dollar_price, market_type FROM tickers WHERE user_id = ? ORDER BY id",
+                    "SELECT id, ticker_code, ticker_name, target_price, target_price_us, buy_price, buy_price_us, amount, dollar_price, stock_type FROM tickers WHERE user_id = ? ORDER BY id",
                     (user_id,)
                 )
                 results = cur.fetchall()
@@ -76,7 +76,7 @@ def select_like_default_ticker_list(input):
         with sql_db.get_connection() as conn:
             with conn:
                 cur = conn.cursor()
-                query = "SELECT short_code, short_name_ko, 0 as market_type FROM default_tickers WHERE short_code LIKE ? OR short_name_ko LIKE ? LIMIT 50"
+                query = "SELECT short_code, short_name_ko, 0 as stock_type FROM default_tickers WHERE short_code LIKE ? OR short_name_ko LIKE ? LIMIT 50"
                 cur.execute(query, (f"%{input}%", f"%{input}%"))
                 result = cur.fetchall()
                 cur.close()
@@ -91,7 +91,7 @@ def select_like_default_ticker_us_list(input):
         with sql_db.get_connection() as conn:
             with conn:
                 cur = conn.cursor()
-                query = "SELECT symbol, name_en, 1 as market_type FROM default_tickers_US WHERE symbol LIKE ? OR name_en LIKE ? OR name_ko LIKE ? LIMIT 50"
+                query = "SELECT symbol, name_en, 1 as stock_type FROM default_tickers_US WHERE symbol LIKE ? OR name_en LIKE ? OR name_ko LIKE ? LIMIT 50"
                 search_param = f"%{input}%"
                 cur.execute(query, (search_param, search_param, search_param))
                 result = cur.fetchall()
@@ -117,12 +117,12 @@ def select_user_webhook():
 
 
 # 유저 마켓 타입 가져오기
-def select_user_market_type():
+def select_user_stock_type():
     try:
         with sql_db.get_connection() as conn:
             with conn:
                 cur = conn.cursor()
-                cur.execute("SELECT market_type FROM users")
+                cur.execute("SELECT stock_type FROM users")
                 result = cur.fetchone()
                 cur.close()
                 return result[0]

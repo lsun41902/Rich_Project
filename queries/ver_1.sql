@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS users (
     webhook TEXT DEFAULT '',
     types INTEGER DEFAULT 0,
     is_active BOOLEAN DEFAULT TRUE,
-    market_type INTEGER DEFAULT 0,
+    stock_type INTEGER DEFAULT 0,
     recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -41,15 +41,15 @@ INSERT INTO configs (cur_user_id) VALUES (0);
 
 INSERT INTO db_ver (ver) VALUES (1);
 
-INSERT INTO users (id, user_name, webhook, types, market_type)
+INSERT INTO users (id, user_name, webhook, types, stock_type)
 VALUES (0, '', '', 0,0)
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO tickers (user_id,ticker_code,ticker_name,target_price) VALUES
-(0, '005930.KS', '삼성전자', 200000),
-(0, '000660.KS', 'SK하이닉스', 1000000),
-(0, '035720.KS', '카카오', 60000),
-(0, '086520.KQ', '에코프로', 180000),
-(0, '247540.KQ', '에코프로비엠', 230000)
+(0, '005930', '삼성전자', 200000),
+(0, '000660', 'SK하이닉스', 1000000),
+(0, '035720', '카카오', 60000),
+(0, '086520', '에코프로', 180000),
+(0, '247540', '에코프로비엠', 230000)
 ON CONFLICT (user_id, ticker_code) DO NOTHING;
 

@@ -35,13 +35,13 @@ def update_user_table():
                                        genai_key   TEXT      DEFAULT '',
                                        types       INTEGER   DEFAULT 0,
                                        is_active   BOOLEAN   DEFAULT TRUE,
-                                       market_type INTEGER   DEFAULT 0,
+                                       stock_type INTEGER   DEFAULT 0,
                                        recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                                    )
                                    """,
           """
-          INSERT INTO users_new (id, user_name, webhook, types, is_active, market_type, recorded_at)
-          SELECT id, user_name, webhook, types, is_active, market_type, recorded_at
+          INSERT INTO users_new (id, user_name, webhook, types, is_active, stock_type, recorded_at)
+          SELECT id, user_name, webhook, types, is_active, stock_type, recorded_at
           FROM users
           """
           ]
@@ -86,7 +86,7 @@ def update_ticker_table():
                                     buy_price_us NUMERIC(15, 2) DEFAULT 0,
                                     amount NUMERIC(15, 2) DEFAULT 0,
                                     dollar_price NUMERIC(15, 2) DEFAULT 0,
-                                    market_type NUMERIC(15, 2) DEFAULT 0,
+                                    stock_type NUMERIC(15, 2) DEFAULT 0,
                                     is_active BOOLEAN DEFAULT TRUE,
                                     recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                                     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -96,7 +96,7 @@ def update_ticker_table():
           """
           INSERT INTO tickers_new (
             id, user_id, ticker_code, ticker_name, target_price, 
-            target_price_us, buy_price, buy_price_us, amount, dollar_price, market_type, is_active, recorded_at
+            target_price_us, buy_price, buy_price_us, amount, dollar_price, stock_type, is_active, recorded_at
         )
         SELECT 
             id, user_id, ticker_code, ticker_name, target_price, 

@@ -8,13 +8,14 @@ import pandas as pd
 import threading
 import services.alert as alert
 from datetime import datetime
-
+import time
 
 # --- [GUI 클래스] ---
 class StockApp:
     def __init__(self, root, watchlist):  # main에서 watchlist를 받아옴
+        start_time = time.time()
         import queries.select as select_db
-        version = "1.2.0"
+        version = "1.3.0"
         self.root = root
         self.root.title(f"주가 모니터 & 알리미 ver:{version}")
         self.root.protocol("WM_DELETE_WINDOW", self.on_finish_out)
@@ -30,6 +31,7 @@ class StockApp:
         self.update_interval = config.TEN
         self.selected_ticker = None
         self.last_selected_id = None
+        self.check_down_us_ticker_list = False
 
         # 딕셔너리 컴프리헨션으로 초기화
         new_data = [
@@ -45,6 +47,7 @@ class StockApp:
             for item in self.watchlist.values()
         ]
         self.ticker = pd.DataFrame(new_data)
+        helper.log_time("ui 생성 시작", start_time)
 
         # --- 상단 레이아웃 ---
         time_frame = tk.Frame(root)
@@ -72,11 +75,11 @@ class StockApp:
         # 시장 선택 레이블 및 버튼
         radio_frame = tk.Frame(root)
         radio_frame.pack(fill='x')
-        self.cur_market = tk.IntVar(value=select_db.select_user_market_type())
-        self.market_type = self.cur_market.get()
-        self.cur_market.trace_add("write",self.on_stock_change)
-        tk.Radiobutton(radio_frame, text="한국 주식", variable=self.cur_market, value=0).pack(side="left", padx=10)
-        tk.Radiobutton(radio_frame, text="미국 주식", variable=self.cur_market, value=1).pack(side="left", padx=10)
+        self.stock_type = tk.IntVar(value=select_db.select_user_stock_type())
+        self.cur_stock = self.stock_type.get()
+        self.stock_type.trace_add("write",self.on_stock_change)
+        tk.Radiobutton(radio_frame, text="한국 주식", variable=self.stock_type, value=0).pack(side="left", padx=10)
+        tk.Radiobutton(radio_frame, text="미국 주식", variable=self.stock_type, value=1).pack(side="left", padx=10)
         tk.Button(radio_frame,text="🏅 금 시세", command=self.show_gold_detail).pack(side="left",padx=5)
 
         self.set_tree_view_type(0)
@@ -107,11 +110,14 @@ class StockApp:
 
         # 데이터 수집 쓰레드 실행
         self.refresh_data()
-        threading.Thread(target=self.test_us, daemon=True).start()
+        helper.log_time("ui 생성 완료", start_time)
+
+        self.loading.show_progress("데이터 가져오는 중...\n잠시만 기다려 주세요...")
+        threading.Thread(target=self.down_us_ticker_list, daemon=True).start()
 
         self.get_time()
 
-    def test_us(self):
+    def down_us_ticker_list(self):
         import queries.select as select_db
         import queries.insert as insert_db
         import queries.update as update_db
@@ -119,10 +125,13 @@ class StockApp:
         us_ver = select_db.select_stock_ver()
         now = datetime.now()
         today = now.strftime("%Y-%m-%d")
-        if us_ver['us_ver'] != today:
+        if  us_ver and us_ver['us_ver'] != today:
             df = us.save_us_stock_list()
             insert_db.insert_stock_us(df)
             update_db.update_stock_version_us(today)
+            self.check_down_us_ticker_list = True
+        else:
+            self.check_down_us_ticker_list = True
 
 
     def set_tree_view_type(self,new_type):
@@ -130,15 +139,7 @@ class StockApp:
 
     def fetch_and_update(self, view_type):
         self.set_tree_view_type(view_type)  # 타입 설정 (0, 1, 2)
-        def worker():
-            try:
-                self.ticker = self.get_request()
-                if self.ticker is not None:
-                    self.root.after(0, lambda: self.update_ui_loop(view_type, self.ticker))
-            except Exception as e:
-                print(f"데이터 로딩 중 오류 발생 (Type {view_type}): {e}")
-
-        threading.Thread(target=worker, daemon=True).start()
+        self.stock_type.set(0)
 
     # 2. 개별 버튼 연결 함수 (간결해짐)
     def my_list(self):
@@ -154,7 +155,7 @@ class StockApp:
         self.fetch_and_update(2)
 
     def show_krx_top10(self,asc=True):
-        df = krx.pull_krx_top20(asc,self.market_type)
+        df = krx.pull_krx_top20(asc,self.cur_stock)
         return df
 
 
@@ -162,17 +163,24 @@ class StockApp:
         from ui.ticker_gold import GoldCart
         GoldCart(self)
 
+
+
     # 4. 콜백 함수 정의 (클래스 내부에 추가)
     def on_stock_change(self, *args):
         # 사용자가 버튼을 누르면 이 함수가 자동으로 실행되어 값을 복사합니다.
-        self.market_type = self.cur_market.get()
-        print(f"마켓 변경 감지: {self.market_type}")
-        import queries.update as update_db
-        update_db.update_user_market_type(0,self.market_type)
-        config.update_webhook(market_type=self.market_type)
-        # 만약 마켓이 바뀌자마자 쓰레드를 깨우고 싶다면?
-        self.loading.show_progress("데이터 가져오는 중...\n잠시만 기다려 주세요...")
-        self.refresh_data()
+        if not self.check_down_us_ticker_list:
+            self.loading.show_progress(message="미국 주식 목록을 받아오는 중입니다.\n잠시만 기다려 주세요...")
+            self.root.after(500, self.on_stock_change)
+            return
+        else:
+            self.cur_stock = self.stock_type.get()
+            print(f"마켓 변경 감지: {self.cur_stock}")
+            import queries.update as update_db
+            update_db.update_user_market_type(0,self.cur_stock)
+            config.update_webhook(stock_type=self.cur_stock)
+            # 만약 마켓이 바뀌자마자 쓰레드를 깨우고 싶다면?
+            self.loading.show_progress("데이터 가져오는 중...\n잠시만 기다려 주세요...")
+            self.refresh_data()
 
     def on_finish_out(self):
         os._exit(0)
@@ -188,12 +196,9 @@ class StockApp:
 
         stock_data = self.ticker[self.ticker['Name'] == ticker_name].iloc[0]
 
-        # {키: 값} 구조로 된 딕셔너리를 새로 만들어서 넘깁니다.
-        item_data = stock_data
-
         # 4. 차트 호출 (item_data를 통째로 넘기거나 종목명만 넘김)
         from ui.ticker_detail import CandleCart
-        CandleCart(self, item_data)
+        CandleCart(self, stock_data)
 
     def open_user_manage(self):
         from ui.user_manage import UserManage
@@ -231,14 +236,15 @@ class StockApp:
         try:
             if tree_view_type == 0:
                 for i, row in df.iterrows():
-                    code, name, target_price, target_price_us, buy_price, buy_price_us, amount, dollar_price, market_type = row['Code'], row['Name'],row['Target_Price'],row['Target_Price_US'],row['Buy_Price'],row['Buy_Price_US'],row['Amount'],row['Dollar_Price'], row['Market_Type']
+                    code, name, target_price, target_price_us, buy_price, buy_price_us, amount, dollar_price, stock_type = row['Code'], row['Name'],row['Target_Price'],row['Target_Price_US'],row['Buy_Price'],row['Buy_Price_US'],row['Amount'],row['Dollar_Price'], row['Stock_Type']
                     price = row['Close']
                     open_p = row['Open']
-                    user_price = f"{int(float(target_price)):,}" if market_type == 0 else f"{int(float(target_price_us)):,}"
-                    unit = helper.data_unit(market_type)
+                    user_price = f"{int(float(target_price)):,}" if stock_type == 0 else f"{int(float(target_price_us)):,}"
+                    unit = helper.data_unit(stock_type)
 
-                    if (now.hour == 9 and now.minute >= 0) or (9 < now.hour < 15) or (now.hour == 15 and now.minute <= 20):
-                        # 가격 변동에 따른 색상 태그 설정
+                    is_open = helper.check_market_open(stock_type, now)
+
+                    if is_open:
                         if price > open_p and open_p != 0:
                             tag, display = 'up', f"▲ {int(float(price)):,}"
                         elif price < open_p and open_p != 0:
@@ -256,7 +262,7 @@ class StockApp:
                     if code == self.selected_ticker:
                         applied_tags.append('selected')
 
-                    if self.market_type == market_type:
+                    if self.cur_stock == stock_type:
                         self.tree.insert("", "end",
                                          values=(name, f"{int(float(open_p)):,}{unit}", f"{display}{unit}",
                                                  f"{today_change}{unit}({today_change_f:+.1f}%)",
@@ -269,6 +275,7 @@ class StockApp:
                     unit = helper.data_unit(0)
                     # 1. 기준을 '시가'가 아닌 '전일 대비 변동폭(Changes)'으로 변경
                     change_amt = row['Changes']  # 전일 대비 얼마 올랐나?
+                    print(name,change_amt)
                     raw_ratio = row['ChagesRatio']  # 전일 대비 몇 % 올랐나?
                     try:
                         today_change_f = float(raw_ratio)
@@ -365,8 +372,8 @@ class StockApp:
             if self.tree_type == 0:
                 rows = []
                 for info in self.watchlist.values():
-                    code, name, target_price, target_price_us, buy_price, buy_price_us, amount, dollar_price, market_type = info
-                    df_5 = krx.pull_request_stock(code, days=5, stock_type=market_type)
+                    code, name, target_price, target_price_us, buy_price, buy_price_us, amount, dollar_price, stock_type = info
+                    df_5 = krx.pull_request_stock(code, days=5, stock_type=stock_type)
 
                     if not df_5.empty:
                         # 2. 마지막 줄(오늘 데이터)을 가져옴
@@ -381,7 +388,7 @@ class StockApp:
                         last_row['Buy_Price_US'] = buy_price_us
                         last_row['Amount'] = amount
                         last_row['Dollar_Price'] = dollar_price
-                        last_row['Market_Type'] = market_type
+                        last_row['Stock_Type'] = stock_type
 
                         rows.append(last_row)  # 리스트에 추가
 
@@ -410,30 +417,45 @@ class StockApp:
         for _, row in df.iterrows():
             code = row['Code']
             name = row['Name']
-            stock_type = row['Market_Type']
+            stock_type = row['Stock_Type']
             target_val = float(row['Target_Price']) if stock_type == 0 else float(row['Target_Price_US'])
             current_val = float(row['Close'])
 
-            # 목표가 도달 체크
-            if current_val >= target_val:
-                if code not in self.already_alerted:
-                    msg = f"종목: {name}({code})\n현재가: **{int(current_val):,}{unit}** (목표: {int(target_val):,}{unit})"
-                    alert.send_stock_alim("🎯 목표가 달성!", msg)
-                    self.already_alerted.add(code)
-            else:
-                # 목표가 아래로 내려가면 다시 알림 가능 상태로 복구
-                if code in self.already_alerted:
-                    self.already_alerted.remove(code)
+            if stock_type == 0 and current_time_str in ["09:00", "15:20"]:
+                # 목표가 도달 체크
+                if current_val >= target_val:
+                    if code not in self.already_alerted:
+                        msg = f"종목: {name}({code})\n현재가: **{int(current_val):,}{unit}** (목표: {int(target_val):,}{unit})"
+                        alert.send_stock_alim("🎯 목표가 달성!", msg)
+                        self.already_alerted.add(code)
+                else:
+                    # 목표가 아래로 내려가면 다시 알림 가능 상태로 복구
+                    if code in self.already_alerted:
+                        self.already_alerted.remove(code)
+            elif stock_type == 1 and current_time_str in ["22:30", "05:00"]:
+                # 목표가 도달 체크
+                if current_val >= target_val:
+                    if code not in self.already_alerted:
+                        msg = f"종목: {name}({code})\n현재가: **{int(current_val):,}{unit}** (목표: {int(target_val):,}{unit})"
+                        alert.send_stock_alim("🎯 목표가 달성!", msg)
+                        self.already_alerted.add(code)
+                else:
+                    # 목표가 아래로 내려가면 다시 알림 가능 상태로 복구
+                    if code in self.already_alerted:
+                        self.already_alerted.remove(code)
 
         # 3. 정기 보고 로직 (중복 방지 추가)
         if current_time_str in ["09:00", "15:20"]:
             if self.last_report_min != current_time_str:
-                title = "🚀 장 시작 보고" if current_time_str == "09:00" else "🚀 장 마감 보고"
+                title = "🚀 국장 시작 보고" if current_time_str == "09:00" else "🚀 국장 마감 보고"
                 alert.send_stock_open_close_alim(title, df)
                 self.last_report_min = current_time_str  # 이번 분에는 더 이상 안 보냄
 
 
-
-
-
+        # 3. 정기 보고 로직 (중복 방지 추가)
+        if current_time_str in ["22:30", "05:00"]:
+            if self.last_report_min != current_time_str:
+                title = "🚀 미장 시작 보고" if current_time_str == "22:30" else "🚀 미장 마감 보고"
+                alert.send_stock_open_close_alim(title, df)
+                self.last_report_min = current_time_str  # 이번 분에는 더 이상 안 보냄
 

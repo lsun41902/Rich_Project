@@ -3,25 +3,52 @@ from neo4j import GraphDatabase
 
 class NewsGraphManager:
     _instance = None
+    _is_dummy = False
 
     def __new__(cls):
         if cls._instance is None:
-            cls._instance = super(NewsGraphManager, cls).__new__(cls)
-            cls._instance._initialized = False
+            try:
+                # 1. 환경 변수 확인
+                from dotenv import load_dotenv
+                import os
+                load_dotenv()
+                uri = os.getenv("GRAPH_URI")
+                user = os.getenv("GRAPH_USER")
+                pw = os.getenv("GRAPH_PASSWORD")
+
+                if not all([uri, user, pw]):
+                    raise ValueError("설정 정보 없음")
+
+                # 2. 실제 연결 시도
+                driver = GraphDatabase.driver(uri, auth=(user, pw))
+                driver.verify_connectivity()  # 실제 서버 체크
+
+                # 성공 시 정상 인스턴스 생성
+                cls._instance = super(NewsGraphManager, cls).__new__(cls)
+                cls._instance.driver = driver
+                cls._instance._initialized = False
+                cls._is_dummy = False
+
+            except Exception as e:
+                print(f"⚠️ Neo4j 연결 불가 ({e}). 더미 모드로 전환합니다.")
+                # 실패 시 DummyManager의 인스턴스를 싱글톤으로 저장
+                import services.ui_helper as helper
+                import time
+                start_time = time.time()
+                helper.log_time("neo4j 없음. 더미 함수 생성",start_time)
+                cls._instance = DummyManager()
+                cls._is_dummy = True
+
         return cls._instance
 
     def __init__(self):
-        if self._initialized: return
+        # DummyManager로 생성된 경우 이 로직을 타지 않게 방어
+        if getattr(self, '_is_dummy', False) or getattr(self, '_initialized', False):
+            return
 
-        # 1. 드라이버 초기화 (안드로이드의 Retrofit/Room 빌더와 비슷합니다)
-        from dotenv import load_dotenv
-        import os
-        load_dotenv()
-        uri = os.getenv("GRAPH_URI")
-        user = os.getenv("GRAPH_USER")
-        password = os.getenv("GRAPH_PASSWORD")
-
-        self.driver = GraphDatabase.driver(uri, auth=(user, password))
+        # 실제 초기화 로직 (정상 연결 시에만 실행)
+        print("✅ Neo4j 그래프 데이터베이스 연결 성공")
+        self._initialized = True
 
     def close(self):
         self.driver.close()
@@ -179,5 +206,12 @@ class NewsGraphManager:
                 for record in result
             ]
             return news_list
+
+class DummyManager:
+    """메서드를 호출해도 에러는 안 나지만, 아무 작업도 안 함"""
+    def __getattr__(self, name):
+        return lambda *args, **kwargs: None
+    def __bool__(self):
+        return False
 
 neo4j = NewsGraphManager()

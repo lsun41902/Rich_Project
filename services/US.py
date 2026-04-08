@@ -2,9 +2,6 @@ import FinanceDataReader as fdr
 
 def save_us_stock_list():
     import pandas as pd
-
-    file_name = 'us_stocks_list.csv'
-
     # 1. 미국 3대 거래소 목록 가져오기
     print("미국 시장 데이터 수집 중...")
     df_nasdaq = fdr.StockListing('NASDAQ')

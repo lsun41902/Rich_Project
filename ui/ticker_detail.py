@@ -27,7 +27,7 @@ class CandleCart:
         self.app = app
         self.root = app.root
         self.ticker_code, self.ticker_name, self.ticker_open_price, self.ticker_stock_type = item_data['Code'], item_data['Name'], item_data[
-            'Open'], item_data['Market_Type']
+            'Open'], item_data['Stock_Type']
 
         font_list = fm.findSystemFonts(fontpaths=None, fontext='ttf')
         malgun_bold = [f for f in font_list if 'malgunbd' in f.lower()][0]
@@ -196,7 +196,7 @@ class CandleCart:
             context = "\n".join([f"• {n['title']}" for n in news_list[:3]])
             if len(news_list) > 3:
                 context += "\n..."
-            self.root.after(0, lambda: self.loading.show_progress("GENAI: 분석 중...\n"+context))
+            self.root.after(0, lambda: self.loading.show_progress("GENAI 3.1 flash: 분석 중...\n"+context))
             result_msg = ai_model.get_ai_detail_briefing(self.ticker_name, news_list)
 
             self.root.after(0, lambda: self.finish_analysis(self.ticker_name, f"{result_msg}"))
@@ -221,6 +221,11 @@ class CandleCart:
         if not keyword:
             self.loading.show_message("분석할 키워드를 입력해주세요!")
             return
+
+        if not neo4j:
+            self.loading.show_message("Neo4j 연결이 활성화되지 않았습니다.")
+            return
+
         self.loading.show_progress(message=f"{keyword}(으)로 관련 기사가 등장 했을때\n주가 변화를 분석중...")
 
         def analyze():
@@ -282,11 +287,24 @@ class CandleCart:
         self.refresh_realtime_chart()
 
     def get_ai_price(self):
-        self.loading.show_progress()
-        thread = threading.Thread(target=self.request_ai_price, daemon=True)
+        def work():
+            if self.is_running: return
+            self.request_ai_price()
+            # 4. [수정] GUI 차트 갱신 함수 호출
+            self.refresh_realtime_chart()
+            self.on_draw_chart(0)
+            if hasattr(self, 'loading'):
+                self.is_running = False
+                self.loading.stop()
+        thread = threading.Thread(target=work, daemon=True)
         thread.start()
 
     def get_default_neo4j_price(self):
+        if not neo4j:
+            import time
+            start_time = time.time()
+            helper.log_time("Neo4j가 없습니다.",start_time)
+            return
         # 1. 로딩 창 띄우기
 
         # 2. 작업 완료 후 실행될 내부 함수 정의
@@ -313,10 +331,18 @@ class CandleCart:
             self.is_running = True
             import pandas as pd
             self.full_df = self.original_df.copy()
+            self.root.after(0, lambda: self.loading.show_progress(f"주가와 거래량을 근거로 향후 5일 예측 중..."))
+
             ai_price = ai_model.get_ai_prediction(self.full_df)
+            self.root.after(0, lambda: self.loading.show_progress(f"RSS에서 최근 {self.ticker_name} 뉴스 검색중..."))
             news_list = rss.pull_request_news(self.ticker_name, 20)
+
+            news_summary = "\n".join([news['title'] for news in news_list[:3]])
+            self.root.after(0, lambda: self.loading.show_progress(f"{news_summary}..."))
             result_msg = ai_model.get_ai_detail_briefing(self.ticker_name, news_list)
             current_text = self.price_label.cget("text")
+
+            self.root.after(0, lambda: self.loading.show_progress(f"LSTM으로 예측한 결과에\n최근 뉴스의 가산점을 더하는 중..."))
             ai_detail_predict_price = ai_model.get_ai_detail_predict(self.ticker_name, news_list, result_msg, ai_price,
                                                                      current_text)
             last_date = self.full_df.index[-1]
@@ -346,16 +372,6 @@ class CandleCart:
             self.full_df = pd.concat([self.full_df, predict_df])
             self.full_df['reason'] = self.full_df['reason'].fillna("")
             self.has_ai_prediction = True
-            # 4. [수정] GUI 차트 갱신 함수 호출
-            # 이제 refresh_realtime_chart가 실행될 때 늘어난 self.full_df를 그리게 됩니다.
-            self.refresh_realtime_chart()
-
-            if not self.is_running: return
-
-            self.canvas.draw_idle()
-            if hasattr(self, 'loading'):
-                self.is_running = False
-                self.loading.stop()
         except Exception as e:
             print(f"예측 실패: {e}")
             if hasattr(self, 'loading'):
@@ -542,6 +558,15 @@ class CandleCart:
                 index = self.tree.index(selected_item)
                 cur_news = self.ticker_news[index]
                 target_news_content = rss.pull_news_content(cur_news)
+                context = "\n".join([f"• {n['title']}" for n in target_news_content[:3]])
+
+                # 1. 초기화 및 대기 메시지 표시
+                self.ai_summary.config(state="normal")
+                self.ai_summary.delete("1.0", tk.END)
+                self.ai_summary.insert(tk.END, context, "header")  # 태그 적용 가능
+                self.ai_summary.update_idletasks()  # 메시지 즉시 렌더링
+
+
                 result = ai_model.get_ai_news_summary(target_news_content[0]['content'])
                 self.update_summary_ui(result, target_news_content[0]['url'])
 
@@ -768,9 +793,18 @@ class CandleCart:
         high_price = row['High']
         low_price = row['Low']
         change = row['Change'] * 100
+
         cur_min, cur_max = self.ax.get_xlim()
         pos_ratio = (idx - cur_min) / (cur_max - cur_min) if (cur_max - cur_min) != 0 else 0
-        label_offset = (-100, 15) if pos_ratio > 0.6 else (15, 15)
+
+        y_min, y_max = self.ax.get_ylim()
+        target_y = (open_price + close_price) / 2
+        y_ratio = (target_y - y_min) / (y_max - y_min) if (y_max - y_min) != 0 else 0
+
+        x_off = -100 if pos_ratio > 0.6 else 15
+        y_off = -100 if y_ratio > 0.6 else 15
+        label_offset = (x_off, y_off)
+
         target_y = (open_price + close_price) / 2
         reason = row['reason'] if 'reason' in df.columns else ""
 

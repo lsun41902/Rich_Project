@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS default_tickers_US(
     name_en TEXT DEFAULT '',-- 영문 종목명
     name_ko TEXT DEFAULT '',-- 한글 종목명
     industry TEXT DEFAULT '', -- 산업 종류
-    market_type TEXT DEFAULT '' -- 시장 종류
+    stock_type TEXT DEFAULT '' -- 시장 종류
 );
 
 

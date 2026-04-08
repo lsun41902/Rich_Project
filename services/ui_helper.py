@@ -1,4 +1,4 @@
-def center_window(window, width, height, parent):
+def center_window(window, width, height, parent=None):
     # parent가 None이면 화면 정중앙
     if parent is None:
         screen_width = window.winfo_screenwidth()
@@ -142,7 +142,6 @@ class LoadingWindow:
         self.window = tk.Toplevel(self.parent)
         self.window.title("분석")
         center_window(self.window, 300, 300, self.parent)
-
         label = tk.Label(self.window, text=message)
         label.pack(pady=10)
 
@@ -157,7 +156,7 @@ class LoadingWindow:
         s_text.insert(tk.END,message)
         s_text.pack(padx=10, pady=10, fill="both", expand=True)
 
-    def show_progress(self, message="과거 60일의 주가와 거래량을\n근거로 향후 5일 예측 중..."):
+    def show_progress(self, message="분석중..."):
         import tkinter as tk
         from tkinter import ttk
         if hasattr(self, 'window') and self.window and self.window.winfo_exists():
@@ -224,3 +223,20 @@ def set_icons():
     MAIN_ICON_PATH = os.path.join(base_path, icon_folder, main_name)
     CHART_ICON_PATH = os.path.join(base_path, icon_folder, chart_name)
     SETTING_ICON_PATH = os.path.join(base_path, icon_folder, setting_name)
+
+
+def log_time(message, start_time):
+    import time
+    elapsed = time.time() - start_time
+    with open("debug_log.txt", "a", encoding="utf-8") as f:
+        f.write(f"[{time.strftime('%H:%M:%S')}] {message}: {elapsed:.2f}s\n")
+
+
+def check_market_open(stock_type, now):
+    h, m = now.hour, now.minute
+
+    if stock_type == 0:  # 한국 주식 (09:00 ~ 15:20)
+        return (9, 0) <= (h, m) <= (15, 20)
+    else:  # 미국 주식 (22:30 ~ 익일 05:00)
+        # 22:30 이후 또는 05:00 이전 (미국 시간은 자정을 넘어가므로 or 연산)
+        return (h, m) >= (22, 30) or h < 5

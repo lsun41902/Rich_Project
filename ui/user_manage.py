@@ -1,8 +1,9 @@
 import tkinter as tk
 import services.ui_helper as helper
 
+
 class UserManage:
-    def __init__(self,app,item_values):
+    def __init__(self, app, item_values):
         self.app = app
         self.root = app.root
         self.data_list = item_values[0]
@@ -13,7 +14,7 @@ class UserManage:
         self.manage = tk.Toplevel(self.root)
         self.manage.title("유저 관리")
         self.manage.iconbitmap(helper.SETTING_ICON_PATH)
-        helper.center_window(self.manage, 500,350, self.root)
+        helper.center_window(self.manage, 500, 350, self.root)
 
         # 1. 라디오 버튼용 변수 (기본값: .KS)
         self.alert_var = tk.IntVar(value=self.data_list['types'])
@@ -41,9 +42,9 @@ class UserManage:
         alert_frame = tk.Frame(self.manage)
         alert_frame.pack()
 
-        tk.Label(alert_frame, text="webhook").pack(pady=5,side='left')
+        tk.Label(alert_frame, text="webhook").pack(pady=5, side='left')
         chk_active = tk.Checkbutton(alert_frame, text="알림 활성화", variable=self.active_var)
-        chk_active.pack(pady=10,side='right')
+        chk_active.pack(pady=10, side='right')
 
         self.ent_webhook = tk.Entry(self.manage, width=50)
         self.ent_webhook.insert(0, default_webhook)
@@ -51,8 +52,8 @@ class UserManage:
 
         model_key_frame = tk.Frame(self.manage)
         model_key_frame.pack()
-        tk.Label(model_key_frame, text="GENAI API KEY").pack(pady=5,side='left')
-        tk.Button(model_key_frame,text="신청",command=self.show_genai_key_webpage).pack(pady=5,side='right')
+        tk.Label(model_key_frame, text="GENAI API KEY").pack(pady=5, side='left')
+        tk.Button(model_key_frame, text="신청", command=self.show_genai_key_webpage).pack(pady=5, side='right')
 
         self.ent_model_key = tk.Entry(self.manage, width=50)
         self.ent_model_key.insert(0, default_genai_key)
@@ -74,11 +75,16 @@ class UserManage:
         webhook = self.ent_webhook.get().strip()
         types = self.alert_var.get()
         is_active = self.active_var.get()  # True 또는 False 반환
-        market_type = self.data_list['market_type']
+        stock_type = self.data_list['stock_type']
         genai_key = self.ent_model_key.get().strip()
-        if name and webhook:
-            update_db.update_user_webhook(0, name, webhook, types, is_active, market_type,genai_key)
-            self.manage.destroy()
-        else:
-            helper.show_message_box(self.manage,title="경고", msg="모든 정보를 입력해주세요.", mtype=1)
 
+        if not name:
+            helper.show_message_box(self.manage, title="경고", msg="이름 정보를 입력해주세요.", mtype=1)
+            return
+
+        if is_active and not webhook:
+            helper.show_message_box(self.manage, title="경고", msg="webhook 정보를 입력해주세요.", mtype=1)
+            return
+
+        update_db.update_user_webhook(0, name, webhook, types, is_active, stock_type, genai_key)
+        self.manage.destroy()

@@ -29,7 +29,7 @@ def init_db_from_csv():
                             '한글 종목약명': 'short_name_ko',
                             '영문 종목명': 'name_en',
                             '상장일': 'listing_date',
-                            '시장구분': 'market_type',
+                            '시장구분': 'stock_name',
                             '증권구분': 'security_type',
                             '소속부': 'dept_type',
                             '주식종류': 'stock_type',
@@ -91,8 +91,10 @@ def setup_database():
         select_db.select_user_ticker_list(current_user)
         select_db.select_user_webhook()
         print_ok("모든 DB 설정이 완료되었습니다.")
+        return True
     except Exception as e:
         print_error(f"setup 오류 발생: {e}")
+        return False
 
 def ver_2():
     import queries.alter as alter_db

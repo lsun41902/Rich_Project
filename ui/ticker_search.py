@@ -64,7 +64,7 @@ class TickerSearch:
 
         # 화면 업데이트
         self.listbox.delete(0, tk.END)
-        for code, name, market_type in self.results:
+        for code, name, stock_type in self.results:
             self.listbox.insert(tk.END, f"{name}")
 
     # 선택 버튼
@@ -72,14 +72,20 @@ class TickerSearch:
         selection_indices = self.listbox.curselection()
         if not selection_indices:  # 선택된 항목이 없으면 리턴
             return
-
+        import services.KRX as krx
         selection = self.results[selection_indices[0]]
-        code, name, market_type = selection
+        code, name, stock_type = selection
+        df = krx.pull_request_stock(code, days=5, stock_type=stock_type)
+        default_price = int(df['Close'].iloc[-1])
+
+        self.app.ent_price.delete(0,tk.END)
+        self.app.ent_price.insert(0,default_price)
 
         self.app.ent_name.delete(0, tk.END)
         self.app.ent_name.insert(0, name)
 
         self.app.ent_code.delete(0, tk.END)
         self.app.ent_code.insert(0, code)
-        self.app.on_stock_change(market_type)
+        self.app.stock_type.set(stock_type)
+        self.app.on_stock_change(stock_type)
         self.search_win.destroy()

@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS users (
     genai_key TEXT DEFAULT '',
     types INTEGER DEFAULT 0,
     is_active BOOLEAN DEFAULT TRUE,
-    market_type INTEGER DEFAULT 0,
+    stock_type INTEGER DEFAULT 0,
     recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS tickers (
     buy_price_us NUMERIC(15, 2) DEFAULT 0,
     amount NUMERIC(15, 2) DEFAULT 0,
     dollar_price NUMERIC(15, 2) DEFAULT 0,
-    market_type NUMERIC(15, 2) DEFAULT 0,
+    stock_type NUMERIC(15, 2) DEFAULT 0,
     is_active BOOLEAN DEFAULT TRUE,
     recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS default_tickers(
     short_name_ko TEXT DEFAULT '',-- 한글 종목약명
     name_en TEXT DEFAULT '',-- 영문 종목명
     listing_date TEXT DEFAULT '',-- 상장일
-    market_type TEXT DEFAULT '',-- 시장구분
+    stock_name TEXT DEFAULT '',-- 시장구분
     security_type TEXT DEFAULT '',-- 증권구분
     dept_type TEXT DEFAULT '',-- 소속부
     stock_type TEXT DEFAULT '',-- 주식종류
@@ -55,7 +55,7 @@ CREATE TABLE IF NOT EXISTS default_tickers_US(
     name_en TEXT DEFAULT '',-- 영문 종목명
     name_ko TEXT DEFAULT '',-- 한글 종목명
     industry TEXT DEFAULT '', -- 산업 종류
-    market_type TEXT DEFAULT '' -- 시장 종류
+    stock_type TEXT DEFAULT '' -- 시장 종류
 );
 
 -- 3. 버전 및 설정 테이블
@@ -64,7 +64,7 @@ CREATE TABLE IF NOT EXISTS db_ver (
     ver INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS configs (cur_user_id INTEGER NOT NULL);
-CREATE TABLE IF NOT EXISTS ticker_ver (ver TEXT DEFAULT '',us_ver TEXT DEFAULT '',);
+CREATE TABLE IF NOT EXISTS ticker_ver (ver TEXT DEFAULT '', us_ver TEXT DEFAULT '');
 
 -- 초기 데이터 삽입
 INSERT INTO configs (cur_user_id) VALUES (0);
@@ -72,13 +72,10 @@ INSERT INTO db_ver (ver) VALUES (1);
 
 -- 기본 사용자 추가 (ID를 0으로 고정하고 싶다면 직접 명시)
 -- 주의: AUTOINCREMENT는 보통 1부터 시작하므로 0번 유저를 만들려면 직접 넣어야 합니다.
-INSERT OR IGNORE INTO users (id, user_name, webhook,genai_key, types, market_type)
+INSERT OR IGNORE INTO users (id, user_name, webhook,genai_key, types, stock_type)
 VALUES (0, '사용자', '','', 0, 0);
 
-INSERT OR IGNORE INTO tickers (user_id, ticker_code, ticker_name, target_price) VALUES
-(0, '005930.KS', '삼성전자', 200000),
-(0, '000660.KS', 'SK하이닉스', 1000000),
-(0, '035720.KS', '카카오', 60000),
-(0, '086520.KQ', '에코프로', 180000),
-(0, '247540.KQ', '에코프로비엠', 230000);
+INSERT OR IGNORE INTO tickers (user_id, ticker_code, ticker_name, target_price, target_price_us, buy_price, buy_price_us, amount, dollar_price, stock_type) VALUES
+(0, '005930', '삼성전자', 200000, 0,0,0,0,0,0),
+(0, 'NVDA', 'NVIDIA Corp', 0, 180,0,0,0,0,1);
 

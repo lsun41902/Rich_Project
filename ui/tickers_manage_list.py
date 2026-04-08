@@ -25,11 +25,11 @@ class TickersManageList:
 
         radio_frame = tk.Frame(self.manager_ui)
         radio_frame.pack(fill='x')
-        self.cur_market = tk.IntVar(value=select_db.select_user_market_type())
-        self.market_type = self.cur_market.get()
-        self.cur_market.trace_add("write", self._on_market_change)
-        tk.Radiobutton(radio_frame, text="한국 주식", variable=self.cur_market, value=0).pack(side="left", padx=10)
-        tk.Radiobutton(radio_frame, text="미국 주식", variable=self.cur_market, value=1).pack(side="left", padx=10)
+        self.stock_type = tk.IntVar(value=select_db.select_user_stock_type())
+        self.cur_stock = self.stock_type.get()
+        self.stock_type.trace_add("write", self.on_market_change)
+        tk.Radiobutton(radio_frame, text="한국 주식", variable=self.stock_type, value=0).pack(side="left", padx=10)
+        tk.Radiobutton(radio_frame, text="미국 주식", variable=self.stock_type, value=1).pack(side="left", padx=10)
 
         # --- 2. Treeview 및 스크롤바 컨테이너 ---
         # 표와 스크롤바를 묶어줄 프레임입니다.
@@ -82,12 +82,13 @@ class TickersManageList:
 
         # 3. 창이 닫히면 실행 (메인 화면 새로고침)
         self.app.watchlist = self.watchlist_data
+        self.app.on_stock_change()
         self.app.my_list()
 
-    def _on_market_change(self, *args):
+    def on_market_change(self, *args):
         # 사용자가 버튼을 누르면 이 함수가 자동으로 실행되어 값을 복사합니다.
-        self.market_type = self.cur_market.get()
-        print(f"마켓 변경 감지: {self.market_type}")
+        self.cur_stock = self.stock_type.get()
+        print(f"마켓 변경 감지: {self.cur_stock}")
 
         # 만약 마켓이 바뀌자마자 쓰레드를 깨우고 싶다면?
         self.refresh_tree()
@@ -118,14 +119,14 @@ class TickersManageList:
             return
 
         for db_id, info in self.watchlist_data.items():
-            code, name, target_price, target_price_us, buy_price, buy_price_us, amount, dollar_price, market_type = info
-            formatted_target = f"{int(target_price):,}" if market_type == 0 else f"{int(target_price_us):,}"
-            formatted_buy_price = f"{int(buy_price):,}" if market_type == 0 else f"{int(buy_price_us):,}"
-            unit = helper.data_unit(market_type)
+            code, name, target_price, target_price_us, buy_price, buy_price_us, amount, dollar_price, stock_type = info
+            formatted_target = f"{int(target_price):,}" if stock_type == 0 else f"{int(target_price_us):,}"
+            formatted_buy_price = f"{int(buy_price):,}" if stock_type == 0 else f"{int(buy_price_us):,}"
+            unit = helper.data_unit(stock_type)
 
             # 여기서 iid에 db_id를 심어줍니다
-            if self.market_type == market_type:
-                self.tree.insert("", "end", iid=db_id, values=(code, name, formatted_target + unit, formatted_buy_price + unit, amount, market_type))
+            if self.cur_stock == stock_type:
+                self.tree.insert("", "end", iid=db_id, values=(code, name, formatted_target + unit, formatted_buy_price + unit, amount, stock_type))
 
     # [-] 삭제 로직
     def delete_item(self):

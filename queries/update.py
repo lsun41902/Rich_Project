@@ -24,7 +24,7 @@ def update_ticker_in_db(db_id, code, name, price, stock_type):
 
 
 # 사용자 웹훅 주소 변경
-def update_user_webhook(user_id, name, webhook, types, is_active, market_type, genai_key):
+def update_user_webhook(user_id, name, webhook, types, is_active, stock_type, genai_key):
     import services.ui_helper as helper
     en_key = helper.encrypt_key(genai_key)
     import config
@@ -33,10 +33,10 @@ def update_user_webhook(user_id, name, webhook, types, is_active, market_type, g
             with conn:
                 cur = conn.cursor()
                 cur.execute(
-                    "UPDATE users SET user_name = ?, webhook = ?, types = ?, is_active = ?, market_type = ?, genai_key =? WHERE id = ?",
-                    (name, webhook, types, is_active, market_type, en_key, user_id))
+                    "UPDATE users SET user_name = ?, webhook = ?, types = ?, is_active = ?, stock_type = ?, genai_key =? WHERE id = ?",
+                    (name, webhook, types, is_active, stock_type, en_key, user_id))
                 cur.close()
-                new_dict = [user_id, name, webhook, genai_key, types, is_active, market_type]
+                new_dict = [user_id, name, webhook, genai_key, types, is_active, stock_type]
                 config.set_webhook(new_dict)
                 return True
     except Exception as e:
@@ -45,13 +45,13 @@ def update_user_webhook(user_id, name, webhook, types, is_active, market_type, g
 
 
 # 사용자 마켓 타입 변경
-def update_user_market_type(user_id, market_type):
+def update_user_market_type(user_id, stock_type):
     import config
     try:
         with sql_db.get_connection() as conn:
             with conn:
                 cur = conn.cursor()
-                cur.execute("UPDATE users SET market_type = ? WHERE id = ?", (market_type, user_id))
+                cur.execute("UPDATE users SET stock_type = ? WHERE id = ?", (stock_type, user_id))
                 cur.close()
                 return True
     except Exception as e:
