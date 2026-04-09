@@ -1,8 +1,10 @@
 import os
 import sys
 import time
+from dotenv import load_dotenv
+
 # 0 = 모든 로그, 1 = 경고 제외, 2 = 에러만, 3 = 아무것도 안 봄
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+# os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0' # oneDNN 관련 경고 제거
 
 # 2. 콘솔 없는 환경에서 로그 버퍼 데드락 방지 (아까 드린 코드)

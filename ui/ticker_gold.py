@@ -257,7 +257,7 @@ class GoldCart:
         self.canvas.get_tk_widget().pack(side="top", fill="both", expand=True)
 
         # Annotation 초기화
-        self.cursor_annotation = self.ax.annotate("", xy=(0, 0), xytext=(15, 15),
+        self.cursor_annotation = self.ax.annotate("", xy=(0, 0), xytext=(15, 15), zorder=10,
                                                   textcoords="offset points", color="white", fontweight="bold",
                                                   bbox=dict(boxstyle="round", fc="w"),
                                                   arrowprops=dict(arrowstyle="->"))
@@ -502,7 +502,7 @@ class GoldCart:
                 idx = self.last_mouse_idx
                 if 0 <= idx < len(self.full_df):
                     # 주석 객체 재생성 (ax.clear로 사라졌으므로)
-                    self.cursor_annotation = self.ax.annotate("", xy=(0, 0), xytext=(15, 15),
+                    self.cursor_annotation = self.ax.annotate("", xy=(0, 0), xytext=(15, 15),zorder=10,
                                                               textcoords="offset points", color="white",
                                                               fontweight="bold",
                                                               bbox=dict(boxstyle="round", fc="w"),

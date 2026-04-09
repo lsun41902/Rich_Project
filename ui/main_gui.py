@@ -84,8 +84,8 @@ class StockApp:
         tk.Button(radio_frame, text="💸 달러 시세", command=self.show_dollar_detail).pack(side="left", padx=5)
 
         self.set_tree_view_type(0)
-        tk.Button(radio_frame,text="-TOP 20", command=lambda: self.low_top20()).pack(side="right",padx=5)
-        tk.Button(radio_frame,text="+TOP 20", command=lambda: self.high_top20()).pack(side="right",padx=5)
+        tk.Button(radio_frame,text="-급락주 20", command=lambda: self.low_top20()).pack(side="right",padx=5)
+        tk.Button(radio_frame,text="+급등주 20", command=lambda: self.high_top20()).pack(side="right",padx=5)
         tk.Button(radio_frame, text="내 종목", command=lambda: self.my_list()).pack(side="right", padx=5)
 
         # --- 표(Treeview) 설정 ---

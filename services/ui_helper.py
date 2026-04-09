@@ -317,7 +317,7 @@ def calc_max_min_info_position(obj):
 
     # 1. 범위 계산 로직 (기존과 동일)
     cur_min, cur_max = obj.ax.get_xlim()
-    cur_ymin, cur_ymax = obj.ax.get_ylim()  # 현재 화면에 보이는 Y축 범위 가져오기
+    cur_ymin, cur_ymax = obj.ax.get_ylim()
 
     start_idx = max(0, int(round(cur_min)))
     end_idx = min(len(obj.full_df) - 1, int(round(cur_max)))
@@ -333,8 +333,9 @@ def calc_max_min_info_position(obj):
         max_pos_x_ratio = (real_max_idx - cur_min) / (cur_max - cur_min) if (cur_max - cur_min) != 0 else 0
         x_off = -70 if max_pos_x_ratio > 0.8 else 20
 
-        max_pos_y_ratio = (max_price - cur_ymin) / (cur_ymax - cur_ymin) if (cur_ymax - cur_ymin) != 0 else 0
-        y_off = -30 if max_pos_y_ratio > 0.85 else 20  # 너무 높으면 -30(아래로), 아니면 20(위로)
+        y_range = cur_ymax - cur_ymin
+        max_y_ratio = (max_price - cur_ymin) / y_range
+        y_off = 20 if max_y_ratio < 0.9 else -20
 
         # 새로운 주석 객체를 생성하여 저장 (이전 객체는 가비지 컬렉터가 처리)
         obj.cursor_annotation_high = obj.ax.annotate(
@@ -347,11 +348,11 @@ def calc_max_min_info_position(obj):
         )
 
         min_pos_x_ratio = (real_min_idx - cur_min) / (cur_max - cur_min) if (cur_max - cur_min) != 0 else 0
-        min_x_off = -70 if min_pos_x_ratio > 0.8 else 20
+        min_x_off = -50 if min_pos_x_ratio > 0.8 else 20
 
-        # 최저가가 바닥에 너무 붙었으면 위로 올림
-        min_pos_y_ratio = (min_price - cur_ymin) / (cur_ymax - cur_ymin) if (cur_ymax - cur_ymin) != 0 else 0
-        min_y_off = 20 if min_pos_y_ratio < 0.15 else -30  # 너무 낮으면 20(위로), 아니면 -30(아래로)
+        y_range = cur_ymax - cur_ymin
+        min_y_ratio = (min_price - cur_ymin) / y_range
+        min_y_off = -20 if min_y_ratio > 0.2 else 20
 
         obj.cursor_annotation_low = obj.ax.annotate(
             f"최저가: {int(min_price):,}",

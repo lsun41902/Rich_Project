@@ -1,6 +1,8 @@
 import os
 import datetime
 from bs4 import BeautifulSoup
+import sys
+
 
 class DartInfo:
     _instance = None
@@ -24,15 +26,14 @@ class DartInfo:
         self.dart = None
         self.all_corp_codes = []
         self.model_genai = None
-
         # 데이터 불러오기 예시
-        if dart_api_key:
-            self.dart = OpenDartReader(dart_api_key)
-            self.all_corp_codes = self.dart.corp_codes
-            dfss.set_api_key(api_key=dart_api_key)
-            print("✅ DART API 키가 성공적으로 로드되었습니다.")
-        else:
-            print("❌ API 키를 찾을 수 없습니다. .env 파일을 확인해주세요.")
+        try:
+            if dart_api_key:
+                self.dart = OpenDartReader(dart_api_key)
+                self.all_corp_codes = self.dart.corp_codes
+                dfss.set_api_key(api_key=dart_api_key)
+        except Exception as e:
+            print(f"⚠️ DART \n오류 내용: {e}")
 
     def get_corp_code(self, target_ticker):
         result = self.all_corp_codes[self.all_corp_codes['stock_code'] == target_ticker]
@@ -86,6 +87,8 @@ class DartInfo:
 
             return report_text
         except Exception as e:
+            print(f"⚠️ DART 데이터를 가져오는 중 오류가 발생했습니다.\n오류 내용: {e}")
+            sys.stdout.flush() # 즉시 밀어내기
             return f"⚠️ DART 데이터를 가져오는 중 오류가 발생했습니다.\n오류 내용: {e}"
 
 dart = DartInfo()

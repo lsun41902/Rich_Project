@@ -186,10 +186,12 @@ class CandleCart:
 
     def analyze_info(self):
         # 2. 작업 완료 후 실행될 내부 함수 정의
+        if self.is_running: return
 
         self.loading.show_progress(message=f"주가 변동 원인 분석중...")
 
         def analyze():
+            self.is_running = True
             # 실제 데이터 업데이트 작업 (무거운 작업)
             self.root.after(0, lambda: self.loading.show_progress("최신 뉴스 수집 중..."))
             news_list = rss.pull_request_news(self.ticker_name, 20)
@@ -197,8 +199,8 @@ class CandleCart:
             if len(news_list) > 3:
                 context += "\n..."
             self.root.after(0, lambda: self.loading.show_progress("GENAI 3.1 flash: 분석 중...\n"+context))
-            result_msg = ai_model.get_ai_detail_briefing(self.ticker_name, news_list)
-
+            result_msg = ai_model.get_ai_detail_briefing(self, news_list)
+            self.is_running = False
             self.root.after(0, lambda: self.finish_analysis(self.ticker_name, f"{result_msg}"))
 
         thread = threading.Thread(target=analyze, daemon=True)
@@ -331,7 +333,7 @@ class CandleCart:
             self.is_running = True
             import pandas as pd
             self.full_df = self.original_df.copy()
-            self.root.after(0, lambda: self.loading.show_progress(f"주가와 거래량을 근거로 향후 5일 예측 중..."))
+            self.root.after(0, lambda: self.loading.show_progress(f"이전 주가를 근거로 향후 5일 예측 중..."))
 
             ai_price = ai_model.get_ai_prediction(self.full_df)
             self.root.after(0, lambda: self.loading.show_progress(f"RSS에서 최근 {self.ticker_name} 뉴스 검색중..."))
@@ -339,12 +341,12 @@ class CandleCart:
 
             news_summary = "\n".join([news['title'] for news in news_list[:3]])
             self.root.after(0, lambda: self.loading.show_progress(f"{news_summary}..."))
-            result_msg = ai_model.get_ai_detail_briefing(self.ticker_name, news_list)
-            current_text = self.price_label.cget("text")
+            result_msg = ai_model.get_ai_detail_briefing(self, news_list)
+            cur_price = self.price_label.cget("text")
 
             self.root.after(0, lambda: self.loading.show_progress(f"LSTM으로 예측한 결과에\n최근 뉴스의 가산점을 더하는 중..."))
             ai_detail_predict_price = ai_model.get_ai_detail_predict(self.ticker_name, news_list, result_msg, ai_price,
-                                                                     current_text)
+                                                                     cur_price)
             last_date = self.full_df.index[-1]
             predict_dates = [last_date + timedelta(days=i) for i in range(1, 6)]
 
@@ -409,7 +411,7 @@ class CandleCart:
         self.canvas.get_tk_widget().pack(side="top", fill="both", expand=True)
 
         # Annotation 초기화
-        self.cursor_annotation = self.ax.annotate("", xy=(0, 0), xytext=(15, 15),
+        self.cursor_annotation = self.ax.annotate("", xy=(0, 0), xytext=(15, 15),zorder=10,
                                                   textcoords="offset points", color="white", fontweight="bold",
                                                   bbox=dict(boxstyle="round", fc="w"),
                                                   arrowprops=dict(arrowstyle="->"))
@@ -538,50 +540,64 @@ class CandleCart:
                 self.tree.insert("", "end", values=(date.split(' ')[0], title))
 
     def on_tree_click(self, event):
+        selection = self.tree.selection()
+        if not selection:
+            return  # 선택된 게 없으면 즉시 종료
+        if self.is_running: return
+        selected_item = self.tree.selection()[0]
+        view_mode = self.view_mode.get()
         # 1. 초기화 및 대기 메시지 표시
         self.ai_summary.config(state="normal", wrap="word")
         self.ai_summary.delete("1.0", tk.END)
+        print("분석 요청", flush=True)
+        self.ai_summary.tag_config("header", foreground="#007bff", font=("Malgun Gothic", 12, "bold"))
         self.ai_summary.insert(tk.END, "🤖 AI 분석 요청 중입니다. 잠시만 기다려 주세요...", "header")  # 태그 적용 가능
         self.ai_summary.update_idletasks()  # 메시지 즉시 렌더링
+        print("분석 하는중", flush=True)
+        def work(item, mode):
+            # 2. 데이터 가져오기
+            try:
+                self.is_running = True
+                if view_mode == 0:
+                    values = self.tree.item(item, "values")
+                    target_rcp_no = values[2]
+                    target_rcp_text = self.dart_instance.get_notice_content_clean(target_rcp_no)
+                    context = f"{values[1]}\nGENAI 3.1 flash가 공시 검토중..."
+                    # 1. 초기화 및 대기 메시지 표시
+                    self.root.after(0, lambda: self._prepare_ui(context))
+                    result = ai_model.get_ai_summary(target_rcp_text)
+                    self.update_summary_ui(result)
+                else:
+                    index = self.tree.index(item)
+                    cur_news = self.ticker_news[index]
+                    context = f"{cur_news['title']}\nGENAI 3.1 flash가 뉴스 검토중..."
+                    target_news_content = rss.pull_news_content(cur_news)
+                    if target_news_content:
+                        # 1. 초기화 및 대기 메시지 표시
+                        self.root.after(0, lambda: self._prepare_ui(context))
 
-        # 2. 데이터 가져오기
-        try:
-            selected_item = self.tree.selection()[0]
-            if self.view_mode.get() == 0:
-                values = self.tree.item(selected_item, "values")
-                target_rcp_no = values[2]
-                target_rcp_text = self.dart_instance.get_notice_content_clean(target_rcp_no)
-                context = f"{values[1]}\nGENAI 3.1 flash가 공시 검토중..."
+                        result = ai_model.get_ai_news_summary(target_news_content[0]['content'])
+                        self.root.after(0, lambda : self.update_summary_ui(result, target_news_content[0]['url']))
+                    else:
+                        self.root.after(0, lambda: self._prepare_ui("뉴스 가져오기 실패"))
 
-                # 1. 초기화 및 대기 메시지 표시
-                self.ai_summary.config(state="normal", wrap="word")
-                self.ai_summary.delete("1.0", tk.END)
-                self.ai_summary.insert(tk.END, context, "header")  # 태그 적용 가능
-                self.ai_summary.update_idletasks()  # 메시지 즉시 렌더링
-                result = ai_model.get_ai_summary(target_rcp_text)
-                self.update_summary_ui(result)
-            else:
-                selected_item = self.tree.selection()[0]
-                index = self.tree.index(selected_item)
-                cur_news = self.ticker_news[index]
-                target_news_content = rss.pull_news_content(cur_news)
-                context = f"{target_news_content[0]['title']}\nGENAI 3.1 flash가 뉴스 검토중..."
+                self.is_running = False
+            except IndexError:
+                print("아이템 선택이 안됨", flush=True)
+                self.is_running = False
+                self.root.after(0, lambda: self._prepare_ui("뉴스 가져오기 실패"))
+                pass  # 아이템 선택이 안 된 경우 무시
+            except Exception as e:
+                self.ai_summary.insert(tk.END, f"\n⚠️ 에러 발생: {e}")
+                self.is_running = False
+        thread = threading.Thread(target=work,args=(selected_item,view_mode), daemon=True)
+        thread.start()
 
-                # 1. 초기화 및 대기 메시지 표시
-                self.ai_summary.config(state="normal", wrap="word")
-                self.ai_summary.delete("1.0", tk.END)
-                self.ai_summary.insert(tk.END, context, "header")  # 태그 적용 가능
-                self.ai_summary.update_idletasks()  # 메시지 즉시 렌더링
+    def _prepare_ui(self, context):
+        self.ai_summary.config(state="normal")
+        self.ai_summary.delete("1.0", tk.END)
+        self.ai_summary.insert(tk.END, context, "header")
 
-
-                result = ai_model.get_ai_news_summary(target_news_content[0]['content'])
-                self.update_summary_ui(result, target_news_content[0]['url'])
-
-
-        except IndexError:
-            pass  # 아이템 선택이 안 된 경우 무시
-        except Exception as e:
-            self.ai_summary.insert(tk.END, f"\n⚠️ 에러 발생: {e}")
 
     def open_url(self, event):
         # 클릭된 위치의 태그 범위를 찾아 URL을 추출합니다.
@@ -779,7 +795,7 @@ class CandleCart:
                 idx = self.last_mouse_idx
                 if 0 <= idx < len(self.full_df):
                     # 주석 객체 재생성 (ax.clear로 사라졌으므로)
-                    self.cursor_annotation = self.ax.annotate("", xy=(0, 0), xytext=(15, 15),
+                    self.cursor_annotation = self.ax.annotate("", xy=(0, 0), xytext=(15, 15),zorder=10,
                                                               textcoords="offset points", color="white",
                                                               fontweight="bold",
                                                               bbox=dict(boxstyle="round", fc="w"),

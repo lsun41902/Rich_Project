@@ -1,3 +1,5 @@
+import sys
+
 from pydantic import BaseModel
 import re
 import json
@@ -96,11 +98,15 @@ class AIModel:
                         """
 
             response = self.client.models.generate_content(model=self.model_genai, contents=prompt, config=self.my_config)
+            print(f"{response}!")
+            sys.stdout.flush()  # 즉시
             return f"{response.text}"
         except exceptions.ResourceExhausted as e:
             print(f"⚠️ 할당량 초과!")
+            sys.stdout.flush() # 즉시 밀어내기
         except Exception as e:
             print(f"AI의 뉴스 분석 오류{e}")
+            sys.stdout.flush()  # 즉시 밀어내기
 
     def get_ai_news_summary(self, raw_text):
         try:
@@ -168,15 +174,17 @@ class AIModel:
             print(f"AI의 뉴스 분석 오류{e}")
 
 
-    def get_ai_detail_briefing(self,ticker_name, news_list):
+    def get_ai_detail_briefing(self,obj, news_list):
         try:
 
             # news_list는 위 Cypher 쿼리 결과물
             context = "\n\n".join([f"{n['title']}" for n in news_list])
 
             prompt = f"""
-            지금 '{ticker_name}' 의 주가가 엄청난 변화를 일으키고 있어! 지금 뉴스를 바탕으로 무슨 일이 있었는지 알려줘.
-            제공된 뉴스 데이터를 바탕으로 '{ticker_name}'에 대한 **분석 리포트**를 150자 이내로 작성해.
+            지금 '{obj.ticker_name}' 의 주가가 엄청난 변화를 일으키고 있어! 
+            분명 어제의 가격은 {obj.original_df['Close'].iloc[-2]} 였는데 {obj.original_df['Close'].iloc[-1]} 가 되버렸어.
+            지금 뉴스를 바탕으로 무슨 일이 있었는지 알려줘.
+            제공된 뉴스 데이터를 바탕으로 '{obj.ticker_name}'에 대한 **분석 리포트**를 150자 이내로 작성해.
     
             [뉴스 타이틀]
             {context}
@@ -197,6 +205,7 @@ class AIModel:
             - 전문적이면서도 투자자가 한눈에 직관적으로 이해할 수 있는 톤을 유지하세요.
             - 마크다운 기호(#, |) 보다는 이모지와 줄바꿈을 활용해 '가독성' 위주로 작성하세요.
             - 각 섹션 시작 전후에 '----------------------------------------------------------------' 구분선을 넣어주세요.
+            - 기자들이 작성한 자극적인 헤드라인에 현혹되지 말고 정말로 일어나고 있는 일인지 생각해 보세요.
             """
 
             # Gemini API 호출 (예시)
@@ -204,8 +213,10 @@ class AIModel:
             return response.text
         except exceptions.ResourceExhausted as e:
             print(f"⚠️ 할당량 초과!")
+            return f"할당량 초과!"
         except Exception as e:
             print(f"AI의 뉴스 분석 오류{e}")
+            return f"분석 오류 {e}"
 
     def get_ai_detail_predict(self,ticker_name, news_list, news_detail, predict_price, cur_price):
         # news_list는 위 Cypher 쿼리 결과물
@@ -229,6 +240,7 @@ class AIModel:
         4. 결과는 반드시 아래 JSON 형식으로만 응답하고, 어떠한 설명이나 마크다운 태그도 포함하지 마세요.
         5. 결과는 반드시 **5개의 예측 객체를 포함한 JSON 리스트** 형식으로만 응답하세요.
         6. **논리적 일관성**: 악재인데 가격이 오르거나, 호재인데 가격이 내리는 '논리적 모순'이 발생하지 않도록 최종 점검하세요.
+        7. 자극적인 뉴스 헤더에 현혹되지 말고 정말로 일어나고 있는 일인지 검토하세요.
         
         [응답 형식]
         반드시 아래 구조의 JSON 리스트만 반환하세요. 마크다운 태그(```json)나 설명은 절대 금지합니다.
@@ -269,48 +281,54 @@ class AIModel:
         import numpy as np
         from sklearn.preprocessing import MinMaxScaler
         # 1. 데이터 추출 (가격, 거래량)
-        raw_data = df[['Close', 'Volume']].values
+        raw_data = df[['Open', 'High', 'Low', 'Close', 'Volume']].values
 
         # 2. 스케일링 (각 컬럼별 0~1 사이로)
         scaler = MinMaxScaler()
         scaled_data = scaler.fit_transform(raw_data)
-
+        if len(df) < (20 + 5):
+            print(f"⚠️ 데이터 부족: 현재 {len(df)}개, 최소 65개 필요")
+            temp_len = len(df)
+        else:
+            temp_len = 20
         # 3. 학습 데이터 생성 (과거 60일 추세 -> 미래 5일 가격)
-        X, y = self.create_dataset(scaled_data, look_back=60, forecast=5)
+        X, y = self.create_dataset(scaled_data, look_back=temp_len, forecast=5)
 
         # 4. 모델 생성 및 학습
         model = self.build_lstm_model(X.shape)
-        model.fit(X, y, epochs=25, batch_size=32, verbose=0)
+        model.fit(X, y, epochs=100, batch_size=32, verbose=0)
 
         # 5. 최신 데이터를 기반으로 예측 시도
         # 가장 최근 60일의 (가격, 거래량) 흐름을 입력
-        last_window = scaled_data[-60:].reshape(1, 60, 2)
+        last_window = scaled_data[-20:].reshape(1, 20, 5)
         predicted_scaled = model.predict(last_window)  # 결과: (1, 5) 형태
 
         # 6. 역스케일링 (수정된 버전)
-        dummy = np.zeros((5, 2))
-        dummy[:, 0] = predicted_scaled[0]  # 예측된 5일치 종가
+        dummy = np.zeros((5, 5))
+        dummy[:, 3] = predicted_scaled[0]  # 예측된 5일치 종가
 
         # [핵심] 마지막 거래량(Volume) 값을 더미의 1번 컬럼에 채워줍니다.
         # 0으로 두는 것보다 실제 마지막 거래량 값을 넣어주는 것이 훨씬 안정적입니다.
-        last_volume = scaled_data[-1, 1]
-        dummy[:, 1] = last_volume
+        last_row_scaled = scaled_data[-1]
+        for i in range(5):
+            if i != 3:  # Close 자리가 아니면
+                dummy[:, i] = last_row_scaled[i]
 
         # 역스케일링 실행
-        final_prediction = scaler.inverse_transform(dummy)[:, 0]
+        final_prediction = scaler.inverse_transform(dummy)[:, 3]
 
         return final_prediction.tolist()
 
 
     # 3. 데이터셋 생성 (60일 보고 5일 예측)
-    def create_dataset(self, dataset, look_back=60, forecast=5):
+    def create_dataset(self, dataset, look_back=20, forecast=5):
         import numpy as np
         X, y = [], []
         for i in range(len(dataset) - look_back - forecast + 1):
             # 과거 60일치 (가격, 거래량) -> Feature
             X.append(dataset[i: i + look_back, :])
             # 향후 5일치 (가격만) -> Label (0번 컬럼이 Close라고 가정)
-            y.append(dataset[i + look_back: i + look_back + forecast, 0])
+            y.append(dataset[i + look_back: i + look_back + forecast, 3])
 
         return np.array(X), np.array(y)
 
@@ -327,6 +345,6 @@ class AIModel:
             Dense(units=32, activation='relu'),
             Dense(units=5)  # 최종 출력: 향후 5일치 가격
         ])
-        model.compile(optimizer='adam', loss='mse')
+        model.compile(optimizer='adam', loss='mean_squared_error')
         return model
 ai_model = AIModel()
