@@ -1,3 +1,6 @@
+# 설치 주소
+https://drive.google.com/drive/folders/11SgaOrq_Mnc9xbfx9fagYVk0zSnOTNoN?usp=sharing
+
 # RICH 프로젝트
 RICH 프로젝트는 투자자가 설정한 목표가 달성 시 실시간 Discord 알림을 제공하며, 딥러닝 모델과 생성형 AI(Gemini)를 활용하여 주가 데이터를 분석하는 PC프로그램 입니다.
 
