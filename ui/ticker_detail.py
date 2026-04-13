@@ -28,7 +28,7 @@ class CandleCart:
         self.root = app.root
         self.ticker_code, self.ticker_name, self.ticker_open_price, self.ticker_stock_type = item_data['Code'], item_data['Name'], item_data[
             'Open'], item_data['Stock_Type']
-
+        self.ylabel_title = "주가 (KRW)" if self.ticker_stock_type == 0 else "주가 (USD)"
         font_list = fm.findSystemFonts(fontpaths=None, fontext='ttf')
         malgun_bold = [f for f in font_list if 'malgunbd' in f.lower()][0]
         self.font_prop = fm.FontProperties(fname="C:/Windows/Fonts/malgun.ttf", size=10)  # 폰트 속성 생성
@@ -401,7 +401,7 @@ class CandleCart:
                                        returnfig=True, figsize=(7, 5), tight_layout=True, volume=True,
                                        scale_padding=dict(left=1.2, right=1.2, top=1.2, bottom=1.2))
         self.ax = self.axes[0]
-        self.ax.set_ylabel("주가 (KRW)")
+        self.ax.set_ylabel(self.ylabel_title)
         if len(self.axes) > 2:
             vol_ax = self.axes[2]
             vol_ax.set_ylabel("거래량")
@@ -763,7 +763,7 @@ class CandleCart:
 
         # 4. X축 범위를 복구해서 화면이 튕기지 않게 함
         self.ax.set_xlim(cur_xlim)
-        self.ax.set_ylabel("주가 (KRW)")
+        self.ax.set_ylabel(self.ylabel_title)
         if len(self.axes) > 2:
             vol_ax = self.axes[2]
             vol_ax.set_ylabel("거래량")
