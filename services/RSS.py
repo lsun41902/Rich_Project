@@ -185,6 +185,8 @@ def pull_news_content(link_input):
     result_dic = []
     # 뉴스사별 본문 ID/클래스 리스트 (최신화 필요)
     selectors = [
+        '#realArtcContents', #네이트 뉴스 전용
+        '#articleContetns',  # 네이트 뉴스 상위 컨테이너
         '#article-view-content-div',  # 디일렉 전용
         'div.txt',  # 디일렉 및 경제지 다수
         '#articleBodyContents',  # 네이버 뉴스
@@ -195,16 +197,40 @@ def pull_news_content(link_input):
         'article',  # 시맨틱 태그 사용 사이트
         '.story-news'  # 기타
     ]
-
+    content = ""
     for selector in selectors:
         target = soup.select_one(selector)
         if target:
-            # 불필요한 태그(광고, 스크립트) 미리 제거
             for s in target(['script', 'style', 'iframe', 'button', 'header', 'footer']):
                 s.decompose()
             content = target.get_text(separator='\n', strip=True)
-            result_dic = [{"title": title, "content": content[:2000], "url":url}]
             if len(content) > 200: break
+
+        # [2단계] 만약 HTML 태그에서 못 찾았다면? (조선비즈 같은 JSON 방식 대응)
+    if len(content) < 200:
+        import re
+        import json
+        # 스크립트 태그 중 Fusion.globalContent를 포함한 것 찾기
+        scripts = soup.find_all('script')
+        for s in scripts:
+            if s.string and 'Fusion.globalContent' in s.string:
+                try:
+                    # 정규식으로 JSON 문자열만 추출
+                    json_str = re.search(r'Fusion\.globalContent\s*=\s*({.*?});', s.string, re.DOTALL).group(1)
+                    data = json.loads(json_str)
+
+                    # JSON 구조 내에서 텍스트 요소만 수집
+                    elements = data.get('content_elements', [])
+                    content = "\n".join([el.get('content') for el in elements if el.get('type') == 'text'])
+                    # HTML 태그 제거 (예: <span name="stock"> 제거)
+                    content = re.sub(r'<[^>]+>', '', content)
+                    break
+                except:
+                    continue
+
+        # 최종 결과 반환
+    if content:
+        result_dic = [{"title": title, "content": content[:2000], "url": url}]
 
     return result_dic
 

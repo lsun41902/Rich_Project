@@ -88,7 +88,7 @@ def pull_dollar_krw(days=365):
     return df
 
 
-def pull_krx_top20(is_top_rising, stock_type):
+def pull_krx_top20(is_top_rising):
     import pandas as pd
     try:
         # 1. 데이터 가져오기 시도
@@ -111,6 +111,7 @@ def pull_krx_top20(is_top_rising, stock_type):
             # 2. 급락주(하락률 큰 순)를 보고 싶을 때 (is_top_rising = False)
             # 오름차순(작은 숫자부터) 정렬 후 상위 추출
             result = df_filtered.sort_values(by='ChagesRatio', ascending=True).head(20)
+        result['Stock_Type'] = 0
         print("TOP20의 데이터를 가져왔습니다.")
         # pd.set_option('display.max_columns', None)  # 열 제한 해제, 확인용
         print(result)

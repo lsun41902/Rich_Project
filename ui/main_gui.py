@@ -15,7 +15,7 @@ class StockApp:
     def __init__(self, root, watchlist):  # main에서 watchlist를 받아옴
         start_time = time.time()
         import queries.select as select_db
-        version = "1.3.0"
+        version = "1.3.1"
         self.root = root
         self.root.title(f"주가 모니터 & 알리미 ver:{version}")
         self.root.protocol("WM_DELETE_WINDOW", self.on_finish_out)
@@ -156,7 +156,7 @@ class StockApp:
         self.fetch_and_update(2)
 
     def show_krx_top10(self,asc=True):
-        df = krx.pull_krx_top20(asc,self.cur_stock)
+        df = krx.pull_krx_top20(asc)
         return df
 
 
