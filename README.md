@@ -69,15 +69,15 @@ NASDAQ, NYSE, S&P 500 등 글로벌 시장의 데이터를 추가 하여 프로�
 API 키 암호화: 사용자의 API Key(GenAI 등)를 OS 고유 식별자 기반으로 암호화하여 안전하게 관리합니다.
 
 ## 🛠 기술 스택 (Tech Stack)
-| **분류** | **기술**                                          |
-| --- |-------------------------------------------------|
-| **Language** | Python 3.10+                                    |
-| **GUI** | Tkinter                                         |
+| **분류** | **기술**                                       |
+| --- |----------------------------------------------|
+| **Language** | Python 3.10+                                 |
+| **GUI** | Tkinter                                      |
 | **Analysis** | TensorFlow (Keras), Scikit-learn, Pandas, NumPy |
-| **Visualization** | Matplotlib, mplfinance                          |
-| **AI/LLM** | Google Gemini API (Generative AI)               |
-| **Data** | Open DART API, FinanceDataReader, RSS Feed              |
-| **Knowledge Graph** | **Graph RAG (LightRAG/Neo4j 등)**                | 뉴스 키워드 간의 인과관계 및 주가 상관관계 지식 그래프 구축 |
+| **Visualization** | Matplotlib, mplfinance                       |
+| **AI/LLM** | Google Gemini API (Generative AI)            |
+| **Data** | Open DART API, FinanceDataReader, RSS Feed           |
+| **Knowledge Graph** | **Graph RAG (Neo4j)**                | 뉴스 키워드 간의 인과관계 및 주가 상관관계 지식 그래프 구축 |
 
 ---
 #### Icons
