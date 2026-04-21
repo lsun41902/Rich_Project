@@ -2,6 +2,7 @@
 https://drive.google.com/drive/folders/11SgaOrq_Mnc9xbfx9fagYVk0zSnOTNoN?usp=sharing
 
 # 라이브러리 설치 방법
+python version 3.12
 pip install -r requirements.txt
 
 # RICH 프로젝트
