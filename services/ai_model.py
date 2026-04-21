@@ -134,8 +134,10 @@ class AIModel:
             return f"{response.text}"
         except exceptions.ResourceExhausted as e:
             print(f"⚠️ 할당량 초과!")
+            return "AI 모델 오류. 잠시후 다시 시도해 주세요."
         except Exception as e:
             print(f"AI의 뉴스 분석 오류{e}")
+            return "AI 모델 오류. 잠시후 다시 시도해 주세요."
 
     def get_ai_briefing(self,ticker_name, keyword, news_list):
         try:
@@ -291,7 +293,7 @@ class AIModel:
             temp_len = len(df)
         else:
             temp_len = 20
-        # 3. 학습 데이터 생성 (과거 60일 추세 -> 미래 5일 가격)
+        # 3. 학습 데이터 생성 (과거 20일 추세 -> 미래 5일 가격)
         X, y = self.create_dataset(scaled_data, look_back=temp_len, forecast=5)
 
         # 4. 모델 생성 및 학습

@@ -318,6 +318,7 @@ class GoldCart:
         # 1. 초기화 및 대기 메시지 표시
         self.news_summary.config(state="normal")
         self.news_summary.delete("1.0", tk.END)
+        self.news_summary.tag_config("header", foreground="#007bff", font=("Malgun Gothic", 12, "bold"))
         self.news_summary.insert(tk.END, "🤖 AI 분석 요청 중입니다. 잠시만 기다려 주세요...", "header")  # 태그 적용 가능
         self.news_summary.update_idletasks()  # 메시지 즉시 렌더링
 
@@ -328,7 +329,7 @@ class GoldCart:
             # AI 요약 결과 받아오기
             cur_news = self.news[index]
             target_news_content = rss.pull_news_content(cur_news)
-            result = ai_model.get_ai_news_summary(target_news_content)
+            result = ai_model.get_ai_news_summary(target_news_content.get('content'))
 
             # 3. [핵심] UI 업데이트 함수 하나로 모든 강조 처리를 끝냅니다.
             self.update_summary_ui(result)

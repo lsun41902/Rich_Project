@@ -301,7 +301,7 @@ class CandleCart:
         thread = threading.Thread(target=work, daemon=True)
         thread.start()
 
-    def get_default_neo4j_price(self):
+    def get_default_neo4j_price(self,df):
         if not neo4j:
             import time
             start_time = time.time()
@@ -311,8 +311,7 @@ class CandleCart:
 
         # 2. 작업 완료 후 실행될 내부 함수 정의
         def run_and_stop():
-            # 실제 데이터 업데이트 작업 (무거운 작업)
-            neo4j.update_stock_data_smart(self, self.ticker_name, self.ticker_code,self.ticker_stock_type)
+            neo4j.update_stock_data_smart(self, df, self.ticker_name, self.ticker_code,self.ticker_stock_type)
 
             # 3. 작업이 끝나면 메인 쓰레드에게 "로딩 창 닫아!"라고 전달
             # self.parent(메인 윈도우)의 after를 사용합니다.
@@ -572,32 +571,39 @@ class CandleCart:
                     cur_news = self.ticker_news[index]
                     context = f"{cur_news['title']}\nGENAI 3.1 flash가 뉴스 검토중..."
                     target_news_content = rss.pull_news_content(cur_news)
-                    if target_news_content:
+                    if target_news_content.get("result") == 1:
                         # 1. 초기화 및 대기 메시지 표시
                         self.root.after(0, lambda: self._prepare_ui(context))
 
-                        result = ai_model.get_ai_news_summary(target_news_content[0]['content'])
-                        self.root.after(0, lambda : self.update_summary_ui(result, target_news_content[0]['url']))
+                        result = ai_model.get_ai_news_summary(target_news_content.get('content'))
+                        self.root.after(0, lambda : self.update_summary_ui(result, target_news_content.get('url')))
                     else:
-                        self.root.after(0, lambda: self._prepare_ui("뉴스 가져오기 실패"))
+                        self.root.after(0, lambda: self._prepare_ui(target_news_content.get('content'),target_news_content.get('url')))
 
                 self.is_running = False
             except IndexError:
                 print("아이템 선택이 안됨", flush=True)
                 self.is_running = False
                 self.root.after(0, lambda: self._prepare_ui("뉴스 가져오기 실패"))
-                pass  # 아이템 선택이 안 된 경우 무시
             except Exception as e:
                 self.ai_summary.insert(tk.END, f"\n⚠️ 에러 발생: {e}")
                 self.is_running = False
         thread = threading.Thread(target=work,args=(selected_item,view_mode), daemon=True)
         thread.start()
 
-    def _prepare_ui(self, context):
+    def _prepare_ui(self, context, url=None):
+        self.setup_text_tags()
         self.ai_summary.config(state="normal")
         self.ai_summary.delete("1.0", tk.END)
-        self.ai_summary.insert(tk.END, context, "header")
+        self.ai_summary.insert(tk.END, context+"\n", "header")
+        if url:
+            # 링크 텍스트 삽입 시 "link" 태그를 바로 입힙니다.
+            link_start = self.ai_summary.index(tk.INSERT)
+            self.ai_summary.insert(tk.END, "🔗 [기사 원문 보기 (클릭)]\n\n", "link")
+            link_end = self.ai_summary.index(tk.INSERT)
 
+            # 클릭 이벤트 바인딩: 람다를 사용해 url을 직접 전달하면 open_url 함수를 따로 안 만들어도 됩니다.
+            self.ai_summary.tag_bind("link", "<Button-1>", lambda e: webbrowser.open(url))
 
     def open_url(self, event):
         # 클릭된 위치의 태그 범위를 찾아 URL을 추출합니다.
@@ -825,7 +831,7 @@ class CandleCart:
 
     def get_date_range(self):
         df = krx.pull_request_stock(self.ticker_code, days=730,stock_type=self.ticker_stock_type)
-        self.get_default_neo4j_price()
+        self.get_default_neo4j_price(df)
         return df
 
     def draw_current_candle_data(self, event):

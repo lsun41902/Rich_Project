@@ -32,6 +32,7 @@ def main():
     loading.show_progress("데이터 베이스 설정중...")
     root.update()
 
+    helper.initialize_nltk()
     from database.connection_SQL import setup_database
     helper.log_time("DB 모듈 로드 완료", start_time)
     if setup_database():

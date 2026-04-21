@@ -455,3 +455,15 @@ def limit_check_and_apply(obj, *args):
     if needs_redraw:
         obj.ax.set_xlim(new_min, new_max)
         obj.canvas.draw_idle()
+
+def initialize_nltk():
+    import nltk
+    """사용자 컴퓨터에 필요한 NLTK 리소스가 있는지 확인하고 없으면 다운로드"""
+    resources = ['punkt', 'punkt_tab']
+    for res in resources:
+        try:
+            # 이미 있는지 확인 시도
+            nltk.data.find(f'tokenizers/{res}')
+        except LookupError:
+            # 없으면 조용히 다운로드
+            nltk.download(res, quiet=True)

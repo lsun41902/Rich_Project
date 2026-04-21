@@ -15,7 +15,7 @@ class StockApp:
     def __init__(self, root, watchlist):  # main에서 watchlist를 받아옴
         start_time = time.time()
         import queries.select as select_db
-        version = "1.3.1"
+        version = "1.3.2"
         self.root = root
         self.root.title(f"주가 모니터 & 알리미 ver:{version}")
         self.root.protocol("WM_DELETE_WINDOW", self.on_finish_out)
@@ -138,22 +138,22 @@ class StockApp:
     def set_tree_view_type(self,new_type):
         self.tree_type = new_type
 
-    def fetch_and_update(self, view_type):
-        self.set_tree_view_type(view_type)  # 타입 설정 (0, 1, 2)
-        self.stock_type.set(0)
-
     # 2. 개별 버튼 연결 함수 (간결해짐)
     def my_list(self):
         self.loading.show_progress("데이터 가져오는 중...\n잠시만 기다려 주세요...")
-        self.fetch_and_update(0)
+        self.set_tree_view_type(0)  # 타입 설정 (0, 1, 2)
+        self.stock_type.set(self.cur_stock)
+
 
     def high_top20(self):
         self.loading.show_progress("데이터 가져오는 중...\n잠시만 기다려 주세요...")
-        self.fetch_and_update(1)
+        self.set_tree_view_type(1)  # 타입 설정 (0, 1, 2)
+        self.stock_type.set(0)
 
     def low_top20(self):
         self.loading.show_progress("데이터 가져오는 중...\n잠시만 기다려 주세요...")
-        self.fetch_and_update(2)
+        self.set_tree_view_type(2)  # 타입 설정 (0, 1, 2)
+        self.stock_type.set(0)
 
     def show_krx_top10(self,asc=True):
         df = krx.pull_krx_top20(asc)
@@ -406,7 +406,7 @@ class StockApp:
                 df = self.show_krx_top10(False)
             return df
         except Exception as e:
-            print(f"오류 발생: {e}")
+            print(f"오류 발생: {e}",flush=True)
             return df
 
     def check_alert(self, df):
