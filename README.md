@@ -1,9 +1,23 @@
 # 설치 주소
 https://drive.google.com/drive/folders/11SgaOrq_Mnc9xbfx9fagYVk0zSnOTNoN?usp=sharing
 
-# 라이브러리 설치 방법
-python version 3.12
+# 🚀 시작하기
+
+### 1. 요구 사항 (Prerequisites)
+* Python 3.12+
+* 가상환경 사용 권장 (venv)
+
+### 2. 설치 방법 (Installation)
+
+```bash
+# 가상환경 생성 및 활성화 (선택 사항이지만 권장)
+python -m venv .venv
+source .venv/Scripts/activate  # Windows (PowerShell)
+# .venv\Scripts\activate.bat   # Windows (CMD)
+
+# 필수 라이브러리 설치
 pip install -r requirements.txt
+```
 
 # RICH 프로젝트
 RICH 프로젝트는 투자자가 설정한 목표가 달성 시 실시간 Discord 알림을 제공하며, 딥러닝 모델과 생성형 AI(Gemini)를 활용하여 주가 데이터를 분석하는 PC프로그램 입니다.
