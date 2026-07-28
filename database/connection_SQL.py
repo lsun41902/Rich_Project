@@ -54,8 +54,15 @@ def init_db_from_csv():
         return False
 
 def get_connection():
-    # 1. 유저의 로컬 데이터 폴더 경로 설정 (Windows 기준)
-    app_data_path = os.path.join(os.environ['APPDATA'], "RichProject")
+    # 1. 유저의 로컬 데이터 폴더 경로 설정 (크로스 플랫폼 지원)
+    if 'APPDATA' in os.environ:
+        app_data_path = os.path.join(os.environ['APPDATA'], "RichProject")
+    else:
+        home_path = os.path.expanduser("~")
+        if sys.platform == "darwin":
+            app_data_path = os.path.join(home_path, "Library", "Application Support", "RichProject")
+        else:
+            app_data_path = os.path.join(home_path, ".config", "RichProject")
 
     # 2. 폴더가 없으면 생성
     if not os.path.exists(app_data_path):

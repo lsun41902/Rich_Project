@@ -26,14 +26,32 @@ class CandleCart:
 
         self.app = app
         self.root = app.root
+
+        # 폰트 설정 (플랫폼 호환성)
+        import platform
+        import matplotlib.pyplot as plt
+        os_type = platform.system()
+        
+        if os_type == "Windows":
+            font_list = fm.findSystemFonts(fontpaths=None, fontext='ttf')
+            malgun_bold = [f for f in font_list if 'malgunbd' in f.lower()][0]
+            self.font_prop = fm.FontProperties(fname="C:/Windows/Fonts/malgun.ttf", size=10)
+            self.font_prop_bold = fm.FontProperties(fname=malgun_bold, size=10)
+        else: # macOS / Linux
+            if os_type == "Darwin":
+                # AppleGothic 직접 지정
+                plt.rcParams['font.family'] = 'AppleGothic'
+                self.font_prop = fm.FontProperties(fname='/System/Library/Fonts/Supplemental/AppleGothic.ttf', size=10)
+                self.font_prop_bold = fm.FontProperties(fname='/System/Library/Fonts/Supplemental/AppleGothic.ttf', size=10, weight='bold')
+            else:
+                # 기본 시스템 폰트 사용
+                self.font_prop = fm.FontProperties(family='sans-serif', size=10)
+                self.font_prop_bold = fm.FontProperties(family='sans-serif', weight='bold', size=10)
+
         self.ticker_code, self.ticker_name, self.ticker_open_price, self.ticker_stock_type = item_data['Code'], item_data['Name'], item_data[
             'Open'], item_data['Stock_Type']
         self.ylabel_title = "주가 (KRW)" if self.ticker_stock_type == 0 else "주가 (USD)"
-        font_list = fm.findSystemFonts(fontpaths=None, fontext='ttf')
-        malgun_bold = [f for f in font_list if 'malgunbd' in f.lower()][0]
-        self.font_prop = fm.FontProperties(fname="C:/Windows/Fonts/malgun.ttf", size=10)  # 폰트 속성 생성
         self.loading = helper.LoadingWindow(self.root)
-        self.font_prop_bold = fm.FontProperties(fname=malgun_bold, size=10)  # 폰트 속성 생성
 
         # [수정] 차트 뼈대를 그릴 객체들 선언
         self.last_report_min = ""  # 정기 보고 중복 방지용
@@ -80,7 +98,10 @@ class CandleCart:
         self.chart_window = tk.Toplevel(self.root)
         self.chart_window.title(f"{self.ticker_name} 실시간 차트")
         self.chart_window.protocol("WM_DELETE_WINDOW", self.on_close)
-        self.chart_window.iconbitmap(helper.CHART_ICON_PATH)
+        try:
+            self.chart_window.iconbitmap(helper.CHART_ICON_PATH)
+        except:
+            pass # macOS 등에서 아이콘 설정 실패 시 무시
         helper.center_window(self.chart_window, 1200, 800, self.root)
 
         top_frame = tk.Frame(self.chart_window)
@@ -390,10 +411,15 @@ class CandleCart:
                                    ohlc='inherit')
 
         # 스타일 설정 부분 수정
+        import platform
+        font_name = 'Malgun Gothic'
+        if platform.system() == "Darwin":
+            font_name = 'AppleGothic'
+
         self.s = mpf.make_mpf_style(base_mpl_style='fast',
                                     marketcolors=mc,
                                     gridstyle='--',
-                                    rc={'font.family': 'Malgun Gothic', 'axes.unicode_minus': False})  # 윈도우 기준 '맑은 고딕'
+                                    rc={'font.family': font_name, 'axes.unicode_minus': False})  # 윈도우 기준 '맑은 고딕'
 
         # [핵심] fig, ax를 self로 저장
         self.fig, self.axes = mpf.plot(df, type='candle', mav=(5, 20, 60), style=self.s,
