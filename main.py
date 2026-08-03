@@ -46,7 +46,7 @@ def main():
         root.mainloop()
     else:
         loading.stop()
-        loading.show_message("설치중 오류가 발생했습니다.")
+        loading.show_message("설치중 오류가 발생했습니다.")#테스트
 
 
 
